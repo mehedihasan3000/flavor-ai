@@ -32,25 +32,25 @@ integration gates (Section 6).
 ## Phase A — Contract Freeze (Blocking; M1 + Team Lead)
 
 ### A1. Shared Types & Validation (`backend/src/types/index.ts`)
-- [ ] User preferences (`DietaryPreferences`, `Allergies`, `NutritionalGoals`)
-- [ ] AI generation input (`AIRecipePromptInput`, `IngredientInput`)
-- [ ] AI recipe output schema (`AIRecipeOutputSchema`) — the strict JSON contract for Groq
-- [ ] Rating, Comment, Favorite DTOs
-- [ ] Pantry match types (`usedIngredients` / `missingIngredients`)
-- [ ] Pagination + error envelope types (`{ status, code, safeMessage, validation? }`)
+- [x] User preferences (`DietaryPreferences`, `Allergies`, `NutritionalGoals`)
+- [x] AI generation input (`AIRecipePromptInput`, `IngredientInput`)
+- [x] AI recipe output schema (`AIRecipeOutputSchema`) — the strict JSON contract for Groq
+- [x] Rating, Comment, Favorite DTOs
+- [x] Pantry match types (`usedIngredients` / `missingIngredients`)
+- [x] Pagination + error envelope types (`{ status, code, safeMessage, validation? }`)
 
 ### A2. API Contract Document
-- [ ] Publish endpoint spec (request/response shapes for every endpoint group) into `docs/API_CONTRACT.md`
-- [ ] Enumerate: `/auth`, `/users(/me)`, `/recipes`, `/ai/recipes/generate`, `/ai/flavor-pairings`,
+- [x] Publish endpoint spec (request/response shapes for every endpoint group) into `docs/API_CONTRACT.md`
+- [x] Enumerate: `/auth`, `/users(/me)`, `/recipes`, `/ai/recipes/generate`, `/ai/flavor-pairings`,
       `/recipes/:id/ratings`, `/recipes/:id/comments`, `/favorites`, `/admin`
-- [ ] Define pagination (`page`/`limit`), sorting keys, filter params (`q`, `category`, `cuisine`, `diet`)
+- [x] Define pagination (`page`/`limit`), sorting keys, filter params (`q`, `category`, `cuisine`, `diet`)
 - [ ] Team Lead approves → **contract frozen** (no shape changes without lead sign-off)
 
 ### A3. Monorepo & Tooling
-- [ ] Scaffold `frontend/` and `backend/` folders (no shared workspace build)
-- [ ] Backend: package.json, TypeScript strict, tsx/nodemon, lint + format
-- [ ] Frontend: create-next-app (App Router, TS, Tailwind, Gravity UI Icons, Better Auth)
-- [ ] `.env.example` + Zod env validation (never commit secrets)
+- [x] Scaffold `frontend/` and `backend/` folders (no shared workspace build)
+- [x] Backend: package.json, TypeScript strict, tsx/nodemon, lint + format
+- [x] Frontend: create-next-app (App Router, TS, Tailwind, Gravity UI Icons, Better Auth)
+- [x] `.env.example` + Zod env validation (never commit secrets)
 - [ ] Confirm auth bridge contract: issuer, audience, signing/verification, cookie policy, expiration, refresh, logout (SRS §9.4)
 
 ---
@@ -59,16 +59,16 @@ integration gates (Section 6).
 
 > **Goal:** The API runs, connects to MongoDB, and exposes the base app + all data models.
 
-- [ ] `backend/src/server.ts` — Express app, CORS, `/api/v1`, centralized error handler, structured logs
-- [ ] `backend/src/config/db.ts` — Mongoose connection, auto-indexes, reconnect retry
-- [ ] Rate limiting scaffold (`express-rate-limit`) wired app-wide
-- [ ] `User.ts` model — profile, dietary prefs, allergies, nutrition goals, role, provider identifiers, timestamps
-- [ ] `Recipe.ts` model — owner ref, source, title/slug/summary/image, ingredients w/ pantry-match, ordered steps, times, servings, difficulty, cuisine/category/tags, dietary labels, allergen warnings, nutrition estimate, status, aggregate counts
-- [ ] `Rating.ts` — unique compound index `(recipeId, userId)`
-- [ ] `Comment.ts` — moderation status
-- [ ] `Favorite.ts` — unique compound index `(recipeId, userId)`
-- [ ] `AIGenerationLog.ts` — inputs, provider/model, status, latency, error category
-- [ ] Indexes: unique email/provider identity, unique slug, text index, status+published, owner+created, comment recipe+created
+- [x] `backend/src/server.ts` — Express app, CORS, `/api/v1`, centralized error handler, structured logs
+- [x] `backend/src/config/db.ts` — Mongoose connection, auto-indexes, reconnect retry
+- [x] Rate limiting scaffold (`express-rate-limit`) wired app-wide
+- [x] `User.ts` model — profile, dietary prefs, allergies, nutrition goals, role, provider identifiers, timestamps
+- [x] `Recipe.ts` model — owner ref, source, title/slug/summary/image, ingredients w/ pantry-match, ordered steps, times, servings, difficulty, cuisine/category/tags, dietary labels, allergen warnings, nutrition estimate, status, aggregate counts
+- [x] `Rating.ts` — unique compound index `(recipeId, userId)`
+- [x] `Comment.ts` — moderation status
+- [x] `Favorite.ts` — unique compound index `(recipeId, userId)`
+- [x] `AIGenerationLog.ts` — inputs, provider/model, status, latency, error category
+- [x] Indexes: unique email/provider identity, unique slug, text index, status+published, owner+created, comment recipe+created
 - [ ] Health check endpoint + smoke test against MongoDB
 
 ---
@@ -205,4 +205,5 @@ integration gates (Section 6).
 > Log updates here as phases complete. Format: `[date] [Member/Lead] What was done, decisions, blockers.`
 
 - `[2026-08-16] [Lead]` Roadmap restructured for 5-member parallel team. Contract freeze (Phase A) is the entry gate; M2–M5 code in parallel against the frozen contract on separate branches.
-- `[2026-08-16] [Lead]` No implementation started yet. Source of truth: SRS, IMPLEMENTATION_PLAN, AGENTS.md.
+- `[2026-08-16] [Lead]` **M1 foundation implemented on `feature/m1-foundation`:** backend scaffold (Express, TS strict, vitest, ESLint/Prettier), shared Zod contract in `backend/src/types/index.ts`, Zod env validation, all 6 Mongoose models + indexes, server/error-handler/rate-limit/health endpoint, `docs/API_CONTRACT.md`, frontend scaffolded via create-next-app. Build + lint + 12 unit tests pass. Smoke test against MongoDB pending Atlas URI.
+- `[2026-08-16] [Lead]` Next: paste Atlas URI into `backend/.env` → run live smoke test, then sign off contract freeze.
