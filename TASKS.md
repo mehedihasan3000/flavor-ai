@@ -44,7 +44,7 @@ integration gates (Section 6).
 - [x] Enumerate: `/auth`, `/users(/me)`, `/recipes`, `/ai/recipes/generate`, `/ai/flavor-pairings`,
       `/recipes/:id/ratings`, `/recipes/:id/comments`, `/favorites`, `/admin`
 - [x] Define pagination (`page`/`limit`), sorting keys, filter params (`q`, `category`, `cuisine`, `diet`)
-- [ ] Team Lead approves → **contract frozen** (no shape changes without lead sign-off)
+- [x] Team Lead approves → **contract frozen** (no shape changes without lead sign-off)
 
 ### A3. Monorepo & Tooling
 - [x] Scaffold `frontend/` and `backend/` folders (no shared workspace build)
@@ -69,7 +69,7 @@ integration gates (Section 6).
 - [x] `Favorite.ts` — unique compound index `(recipeId, userId)`
 - [x] `AIGenerationLog.ts` — inputs, provider/model, status, latency, error category
 - [x] Indexes: unique email/provider identity, unique slug, text index, status+published, owner+created, comment recipe+created
-- [ ] Health check endpoint + smoke test against MongoDB
+- [x] Health check endpoint + smoke test against MongoDB
 
 ---
 
@@ -207,3 +207,4 @@ integration gates (Section 6).
 - `[2026-08-16] [Lead]` Roadmap restructured for 5-member parallel team. Contract freeze (Phase A) is the entry gate; M2–M5 code in parallel against the frozen contract on separate branches.
 - `[2026-08-16] [Lead]` **M1 foundation implemented on `feature/m1-foundation`:** backend scaffold (Express, TS strict, vitest, ESLint/Prettier), shared Zod contract in `backend/src/types/index.ts`, Zod env validation, all 6 Mongoose models + indexes, server/error-handler/rate-limit/health endpoint, `docs/API_CONTRACT.md`, frontend scaffolded via create-next-app. Build + lint + 12 unit tests pass. Smoke test against MongoDB pending Atlas URI.
 - `[2026-08-16] [Lead]` Next: paste Atlas URI into `backend/.env` → run live smoke test, then sign off contract freeze.
+- `[2026-08-16] [Lead]` **Live smoke test PASSED** against MongoDB Atlas — `/api/v1/health` → 200, DB connected, server boots. **Contract is now FROZEN.** M2–M5 may start in parallel: each opens opencode in `flavor-ai/` on their own branch off `develop` and prompts per AGENTS.md. Merge order: M2 → M3/M4 → M5.
