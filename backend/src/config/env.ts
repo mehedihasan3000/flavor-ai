@@ -23,14 +23,41 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
-const parsed = EnvSchema.safeParse(process.env);
+const TEST_FALLBACK = {
+  MONGODB_URI: "mongodb://localhost:27017/flavorai-test",
+  JWT_SECRET: "test-only-secret-at-least-16-chars",
+} as const;
 
-if (!parsed.success) {
+function isTestRun(): boolean {
+  return process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+}
+
+function loadEnv(): Env {
+  const parsed = EnvSchema.safeParse(process.env);
+
+  if (parsed.success) {
+    return parsed.data;
+  }
+
+  if (isTestRun()) {
+    const testParsed = EnvSchema.safeParse({
+      ...process.env,
+      NODE_ENV: "test",
+      MONGODB_URI: process.env.MONGODB_URI ?? TEST_FALLBACK.MONGODB_URI,
+      JWT_SECRET: process.env.JWT_SECRET ?? TEST_FALLBACK.JWT_SECRET,
+    });
+    if (testParsed.success) {
+      console.warn("[env] Test run: missing env vars filled with test fallbacks.");
+      return testParsed.data;
+    }
+  }
+
   const issues = parsed.error.issues
     .map((i) => `${i.path.join(".")}: ${i.message}`)
     .join(", ");
   console.error(`[env] Invalid environment configuration: ${issues}`);
+  console.error("[env] Copy .env.example to .env and fill in real values before running.");
   process.exit(1);
 }
 
-export const env: Env = parsed.data;
+export const env: Env = loadEnv();

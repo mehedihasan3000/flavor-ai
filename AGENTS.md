@@ -54,9 +54,8 @@ For a single test file: `npx vitest run tests/types.test.ts`.
   comments, favorites, admin are not built yet** — M2–M5 mount their routers in
   `backend/src/routes/v1.ts`.
 - Every response must use the error envelope `{ status, code, safeMessage, validation? }`.
-  `src/middleware/errorHandler.ts` maps `ZodError` → 400 and `ApiError` → its status.
-  **Known gap:** Mongoose duplicate-key (E11000) is NOT mapped (currently → 500
-  INTERNAL_ERROR); map it to 409 `CONFLICT` when adding unique-constraint writes.
+  `src/middleware/errorHandler.ts` maps `ZodError` → 400, `ApiError` → its status, and
+  Mongoose duplicate-key (E11000) → 409 `CONFLICT`.
 - `Recipe.totalTimeMinutes` is computed in a `pre("save")` hook only — not on
   `findOneAndUpdate`. Recompute in services when editing recipes.
 - Indexes already on models: unique email + sparse unique providerId (User), unique
