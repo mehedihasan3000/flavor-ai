@@ -80,10 +80,10 @@ integration gates (Section 6).
 ### Backend
 - [x] `middleware/auth.ts` — Bearer JWT verification, attach `req.user`, reject expired/malformed/unauthorized (FR-AUTH-04/05)
 - [x] Role + ownership guards (owner-or-admin for edit/unpublish/delete; FR-RECIPE-06)
-- [ ] `authController.ts` — Better Auth integration + token verification
+- [x] `authController.ts` — Better Auth integration + token verification
 - [ ] `userController.ts` — `/users/me` view/update profile + preferences (FR-AUTH-06)
 - [ ] Password hashing if used; never return in plain text (FR-AUTH-07)
-- [ ] Rate limiting on auth endpoints (NFR-SEC-07)
+- [x] Rate limiting on auth endpoints (NFR-SEC-07)
 
 ### Frontend (auth pages)
 - [ ] `(auth)/sign-in/page.tsx`, `(auth)/sign-up/page.tsx` via Better Auth
@@ -210,3 +210,4 @@ integration gates (Section 6).
 - `[2026-08-16] [Lead]` **Live smoke test PASSED** against MongoDB Atlas — `/api/v1/health` → 200, DB connected, server boots. **Contract is now FROZEN.** M2–M5 may start in parallel: each opens opencode in `flavor-ai/` on their own branch off `develop` and prompts per AGENTS.md. Merge order: M2 → M3/M4 → M5.
 - `[2026-08-16] [Lead]` **Phase A hardening:** Mongoose E11000 duplicate-key now maps to 409 `CONFLICT` (errorHandler, +2 tests). `config/env.ts` gets a test-mode fallback so a fresh clone without `.env` no longer hard-crashes `npm test`. Build ✓, lint ✓, 14/14 tests ✓.
 - `[2026-08-18] [M2]` **Task 1 of M2 done:** `middleware/auth.ts` — `verifyAccessToken` (HS256, issuer/audience/expiry, 401 on expired/malformed/unauthorized), `authenticate` (hydrates `req.user` from Mongo by `providerId`), `requireRole`/`requireAdmin` guards (403), `isOwnerOrAdmin` helper (FR-RECIPE-06), Express `Request.user` augmentation. Tests `tests/auth.test.ts` (21 cases, UserModel mocked). Build ✓, lint ✓, 35/35 tests ✓.
+- `[2026-08-18] [M2]` **Task 2 of M2 done:** `authController.ts` mounted at `/auth` (with tighter `authLimiter`, 50/15min per NFR-SEC-07) — `POST /auth/token/verify` verifies the JWT and lazily upserts the user via `findOneAndUpdate` on `providerId` (`$setOnInsert`, atomic/race-safe), returns `{ user }`; `POST /auth/logout` → 204 (stateless, contract-compliant). JWT policy finalized in `docs/API_CONTRACT.md` `/auth` section (HS256, issuer/audience/expiry). Tests `tests/authController.test.ts` (7 cases via supertest). Build ✓, lint ✓, 42/42 tests ✓.
