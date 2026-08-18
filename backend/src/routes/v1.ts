@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDBState } from "../config/db.js";
+import { ratingsRouter } from "./ratings.js";
 
 export const v1Router = Router();
 
@@ -20,3 +21,5 @@ v1Router.get("/health", (_req, res) => {
 // M2: /auth, /users
 // M3: /recipes, /ai
 // M4: /recipes/:id/ratings, /recipes/:id/comments, /favorites, /admin
+
+v1Router.use("/recipes/:id/ratings", ratingsRouter);

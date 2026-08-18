@@ -123,8 +123,8 @@ integration gates (Section 6).
 > **Goal:** Ratings, comments, favorites, and admin moderation behave per business rules with security hardening.
 
 ### Backend
-- [ ] `ratingController.ts` — create/update/remove; integer 1–5; one per user per recipe; owner can't rate own (FR-RATE-01..05)
-- [ ] Aggregate rating recalculation after changes
+- [x] `ratingController.ts` — create/update/remove; integer 1–5; one per user per recipe; owner can't rate own (FR-RATE-01..05)
+- [x] Aggregate rating recalculation after changes
 - [ ] `commentController.ts` — add/list/delete; length validation + sanitization; owner deletion (FR-COMMENT-01..05)
 - [ ] `favoriteController.ts` — add/list/remove; uniqueness enforced; private list (FR-FAV-01..04)
 - [ ] `adminController.ts` — role-protected moderation of recipes/comments, actions logged (FR-ADMIN-01..04)
@@ -210,4 +210,5 @@ integration gates (Section 6).
 - `[2026-08-16] [Lead]` **Live smoke test PASSED** against MongoDB Atlas — `/api/v1/health` → 200, DB connected, server boots. **Contract is now FROZEN.** M2–M5 may start in parallel: each opens opencode in `flavor-ai/` on their own branch off `develop` and prompts per AGENTS.md. Merge order: M2 → M3/M4 → M5.
 - `[2026-08-16] [Lead]` **Phase A hardening:** Mongoose E11000 duplicate-key now maps to 409 `CONFLICT` (errorHandler, +2 tests). `config/env.ts` gets a test-mode fallback so a fresh clone without `.env` no longer hard-crashes `npm test`. Build ✓, lint ✓, 14/14 tests ✓.
 - `[2026-08-18] [M4]` **M4 Step 1 — auth prerequisite:** implemented `backend/src/middleware/auth.ts` (`requireAuth` + `requireAdmin`) matching the M2 auth-bridge spec (Bearer JWT verify w/ issuer+audience, fresh user state via `UserModel.findById`, 401/403 envelopes) and `backend/src/types/auth.ts` (`AuthUser` + Express `Request.user` augmentation). 10 new unit tests (`tests/auth.test.ts`) cover missing/malformed/expired/wrong-secret/mismatched-audience tokens, deleted user, admin 403, admin 200. Reconcile with M2's version at merge. Build ✓, lint ✓, 24/24 tests ✓.
+- `[2026-08-18] [M4]` **M4 Step 2 — ratings:** `ratingController.ts` (GET public summary, PUT idempotent upsert, DELETE own rating), aggregate recalculation (`RatingModel.aggregate` → recipe `averageRating`/`ratingCount`), owner-cannot-rate → 403, integer 1–5 via `CreateRatingInput`, published-only guard (`utils/recipeAccess.ts`), ObjectId param validation (`utils/params.ts`), `asyncHandler` util, mounted at `/recipes/:id/ratings` (`Router({ mergeParams: true })`). 11 new tests. Build ✓, lint ✓, 36/36 tests ✓.
 - `[2026-08-18] [M4]` **Auth review fixes:** `auth.ts` now validates `sub` against `ObjectIdString` before `findById` (signature-valid non-ObjectId `sub` → 401 instead of a Mongoose CastError 500; +1 test), `AuthUser.role` derives from `USER_ROLE`, and stray `package-lock.json` churn reverted. Build ✓, lint ✓, 25/25 tests ✓.
