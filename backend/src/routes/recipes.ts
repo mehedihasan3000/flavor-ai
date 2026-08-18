@@ -1,13 +1,12 @@
 import { Router } from "express";
 import * as recipeController from "../controllers/recipeController.js";
 import { optionalAuth, requireAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
-import { CreateRecipeInput, UpdateRecipeInput } from "../types/index.js";
+import { validateBody, validateQuery } from "../middleware/validate.js";
+import { CreateRecipeInput, RecipeSearchQuery, UpdateRecipeInput } from "../types/index.js";
 
 export const recipesRouter = Router();
 
-// GET /recipes (paginated search) is added in M3 step 2.
-
+recipesRouter.get("/", validateQuery(RecipeSearchQuery), recipeController.searchRecipes);
 recipesRouter.get("/:id", optionalAuth, recipeController.getRecipe);
 recipesRouter.post(
   "/",

@@ -98,7 +98,7 @@ integration gates (Section 6).
 
 ### Backend
 - [x] `recipeController.ts` — CRUD, draft/publish/unpublish/delete, ownership enforced (FR-RECIPE-01..06)
-- [ ] Paginated search + filters: `q`, `category`, `cuisine`, `diet`, `sort`, `page`, `limit` (FR-SEARCH-01..05)
+- [x] Paginated search + filters: `q`, `category`, `cuisine`, `diet`, `sort`, `page`, `limit` (FR-SEARCH-01..05)
 - [ ] `aiService.ts` — Groq adapter (`llama-3.3-70b-versatile` / `mixtral-8x7b-32768`)
 - [ ] Constrained prompt builder enforcing strict JSON schema output
 - [ ] Server-side Zod validation on ALL AI output; invalid/incomplete NOT stored (FR-AI-07)
@@ -210,3 +210,4 @@ integration gates (Section 6).
 - `[2026-08-16] [Lead]` **Live smoke test PASSED** against MongoDB Atlas — `/api/v1/health` → 200, DB connected, server boots. **Contract is now FROZEN.** M2–M5 may start in parallel: each opens opencode in `flavor-ai/` on their own branch off `develop` and prompts per AGENTS.md. Merge order: M2 → M3/M4 → M5.
 - `[2026-08-16] [Lead]` **Phase A hardening:** Mongoose E11000 duplicate-key now maps to 409 `CONFLICT` (errorHandler, +2 tests). `config/env.ts` gets a test-mode fallback so a fresh clone without `.env` no longer hard-crashes `npm test`. Build ✓, lint ✓, 14/14 tests ✓.
 - `[2026-08-17] [M3]` **M3 step 1 — recipe CRUD core done on `feature/m3-recipes-ai`.** Added `middleware/auth.ts` (minimal JWT bridge: `requireAuth`/`optionalAuth`/`requireAdmin`/`isOwnerOrAdmin`, issuer+audience from env — M2 reconciles at merge), `middleware/validate.ts`, `utils/asyncHandler.ts`, `controllers/recipeController.ts` (create→draft, get w/ draft visibility rules, update/delete/publish/unpublish owner-or-admin, totalTime recompute), `routes/recipes.ts` mounted in v1.ts, `req.user` type augmentation. `mongodb-memory-server` added for DB-backed integration tests (17 new → 31/31 pass; build+lint clean). **Found + fixed M1 model bug:** `User.providerId` default `null` broke the sparse unique index (second user → E11000); changed default to `undefined` so the field is absent unless set — flag to Lead for M1 sign-off.
+- `[2026-08-17] [M3]` **M3 step 2 — paginated recipe search done.** `GET /recipes` (public): `searchRecipes` in `recipeController.ts` — `q` text search (title/summary/ingredients text index), filters `category`/`cuisine`/`diet`/`difficulty`/`maxCookingTimeMinutes`, sorts `newest`/`highest-rated`/`most-popular`, `page`/`limit` → `PaginatedResult` envelope. Query validated by `validateQuery(RecipeSearchQuery)`. +8 tests (tests/recipeSearch.test.ts) → 39/39 pass; build+lint clean.

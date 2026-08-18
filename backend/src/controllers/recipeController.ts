@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
-import { Types, type HydratedDocument } from "mongoose";
+import { Types, type FilterQuery, type HydratedDocument } from "mongoose";
 import { isOwnerOrAdmin } from "../middleware/auth.js";
 import { RecipeModel, type Recipe } from "../models/Recipe.js";
-import type { CreateRecipeInput, UpdateRecipeInput } from "../types/index.js";
+import type { CreateRecipeInput, RecipeSearchQuery, UpdateRecipeInput } from "../types/index.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -42,6 +42,56 @@ function toRecipeResponse(recipe: HydratedDocument<Recipe>) {
     createdAt: recipe.createdAt,
     updatedAt: recipe.updatedAt,
   };
+}
+
+/**
+ * GET /recipes — public, paginated search over published recipes (FR-SEARCH).
+ * Supports q (text index on title/summary/ingredients), category, cuisine,
+ * diet, difficulty, maxCookingTimeMinutes, sort, page, limit.
+ */
+export const searchRecipes = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as RecipeSearchQuery;
+
+  const filter: FilterQuery<Recipe> = { status: "published" };
+
+  if (query.q?.trim()) {
+    filter.$text = { $search: query.q.trim() };
+  }
+  if (query.category) filter.category = query.category;
+  if (query.cuisine) filter.cuisine = query.cuisine;
+  if (query.diet) filter.dietaryLabels = query.diet;
+  if (query.difficulty) filter.difficulty = query.difficulty;
+  if (query.maxCookingTimeMinutes) {
+    filter.totalTimeMinutes = { $lte: query.maxCookingTimeMinutes };
+  }
+
+  const sort = buildSort(query.sort);
+  const skip = (query.page - 1) * query.limit;
+
+  const [items, total] = await Promise.all([
+    RecipeModel.find(filter).sort(sort).skip(skip).limit(query.limit),
+    RecipeModel.countDocuments(filter),
+  ]);
+
+  res.json({
+    items: items.map(toRecipeResponse),
+    page: query.page,
+    limit: query.limit,
+    total,
+    totalPages: Math.ceil(total / query.limit),
+  });
+});
+
+function buildSort(sort: RecipeSearchQuery["sort"]): Record<string, 1 | -1> {
+  switch (sort) {
+    case "highest-rated":
+      return { averageRating: -1, ratingCount: -1 };
+    case "most-popular":
+      return { favoriteCount: -1, averageRating: -1 };
+    case "newest":
+    default:
+      return { publishedAt: -1, createdAt: -1 };
+  }
 }
 
 /**
