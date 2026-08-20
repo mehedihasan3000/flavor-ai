@@ -78,8 +78,8 @@ integration gates (Section 6).
 > **Goal:** Better Auth client flow ↔ Express JWT bridge works end-to-end; profile/preferences editable.
 
 ### Backend
-- [ ] `middleware/auth.ts` — Bearer JWT verification, attach `req.user`, reject expired/malformed/unauthorized (FR-AUTH-04/05)
-- [ ] Role + ownership guards (owner-or-admin for edit/unpublish/delete; FR-RECIPE-06)
+- [x] `middleware/auth.ts` — Bearer JWT verification, attach `req.user`, reject expired/malformed/unauthorized (FR-AUTH-04/05)
+- [x] Role + ownership guards (owner-or-admin for edit/unpublish/delete; FR-RECIPE-06)
 - [ ] `authController.ts` — Better Auth integration + token verification
 - [ ] `userController.ts` — `/users/me` view/update profile + preferences (FR-AUTH-06)
 - [ ] Password hashing if used; never return in plain text (FR-AUTH-07)
@@ -209,4 +209,5 @@ integration gates (Section 6).
 - `[2026-08-16] [Lead]` Next: paste Atlas URI into `backend/.env` → run live smoke test, then sign off contract freeze.
 - `[2026-08-16] [Lead]` **Live smoke test PASSED** against MongoDB Atlas — `/api/v1/health` → 200, DB connected, server boots. **Contract is now FROZEN.** M2–M5 may start in parallel: each opens opencode in `flavor-ai/` on their own branch off `develop` and prompts per AGENTS.md. Merge order: M2 → M3/M4 → M5.
 - `[2026-08-16] [Lead]` **Phase A hardening:** Mongoose E11000 duplicate-key now maps to 409 `CONFLICT` (errorHandler, +2 tests). `config/env.ts` gets a test-mode fallback so a fresh clone without `.env` no longer hard-crashes `npm test`. Build ✓, lint ✓, 14/14 tests ✓.
+- `[2026-08-18] [M2]` **Task 1 of M2 done:** `middleware/auth.ts` — `verifyAccessToken` (HS256, issuer/audience/expiry, 401 on expired/malformed/unauthorized), `authenticate` (hydrates `req.user` from Mongo by `providerId`), `requireRole`/`requireAdmin` guards (403), `isOwnerOrAdmin` helper (FR-RECIPE-06), Express `Request.user` augmentation. Tests `tests/auth.test.ts` (21 cases, UserModel mocked). Build ✓, lint ✓, 35/35 tests ✓.
 - `[2026-08-17] [M3]` **M3 step 1 — recipe CRUD core done on `feature/m3-recipes-ai`.** Added `middleware/auth.ts` (minimal JWT bridge: `requireAuth`/`optionalAuth`/`requireAdmin`/`isOwnerOrAdmin`, issuer+audience from env — M2 reconciles at merge), `middleware/validate.ts`, `utils/asyncHandler.ts`, `controllers/recipeController.ts` (create→draft, get w/ draft visibility rules, update/delete/publish/unpublish owner-or-admin, totalTime recompute), `routes/recipes.ts` mounted in v1.ts, `req.user` type augmentation. `mongodb-memory-server` added for DB-backed integration tests (17 new → 31/31 pass; build+lint clean). **Found + fixed M1 model bug:** `User.providerId` default `null` broke the sparse unique index (second user → E11000); changed default to `undefined` so the field is absent unless set — flag to Lead for M1 sign-off.
