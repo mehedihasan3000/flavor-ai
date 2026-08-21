@@ -1,3 +1,66 @@
+import type { NextFunction, Request, Response } from "express";
+import jwt from "jsonwebtoken";
+import { env } from "../config/env.js";
+import { UserModel } from "../models/User.js";
+import type { AuthUser } from "../types/auth.js";
+import { ObjectIdString } from "../types/index.js";
+import { ApiError } from "../utils/ApiError.js";
+
+interface AuthUserDoc {
+  _id: unknown;
+  email: string;
+  name: string;
+  role: string;
+}
+
+function extractBearerToken(req: Request): string | undefined {
+  const header = req.headers.authorization;
+  if (!header) return undefined;
+  const [scheme, token] = header.split(" ");
+  if (scheme !== "Bearer" || !token) return undefined;
+  return token;
+}
+
+async function authenticate(req: Request): Promise<AuthUser> {
+  const token = extractBearerToken(req);
+  if (!token) {
+    throw new ApiError(401, "UNAUTHORIZED", "Authentication required.");
+  }
+
+  let payload: jwt.JwtPayload;
+  try {
+    payload = jwt.verify(token, env.JWT_SECRET, {
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
+    }) as jwt.JwtPayload;
+  } catch {
+    throw new ApiError(401, "UNAUTHORIZED", "Invalid or expired token.");
+  }
+
+  const userId = payload.sub;
+  if (!userId || !ObjectIdString.safeParse(userId).success) {
+    throw new ApiError(401, "UNAUTHORIZED", "Invalid or expired token.");
+  }
+
+  const user = (await UserModel.findById(userId).lean()) as AuthUserDoc | null;
+  if (!user) {
+    throw new ApiError(401, "UNAUTHORIZED", "User no longer exists.");
+  }
+
+  return {
+    id: String(user._id),
+    email: user.email,
+    name: user.name,
+    role: user.role === "admin" ? "admin" : "user",
+  };
+}
+
+/**
+ * Verifies the signed Bearer JWT (issuer/audience/expiry) and attaches the
+ * fresh user context to `req.user`. Rejects missing, malformed, expired, or
+ * unauthorized tokens with a 401 envelope (FR-AUTH-04/05).
+ */
+export async function requireAuth(
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
@@ -90,6 +153,7 @@ export async function authenticate(
   next: NextFunction,
 ): Promise<void> {
   try {
+    req.user = await authenticate(req);
     const claims = verifyAccessToken(extractBearerToken(req));
     const user = (await UserModel.findOne({ providerId: claims.sub })
       .lean()
@@ -111,6 +175,23 @@ export async function authenticate(
   }
 }
 
+/** requireAuth + role check: non-admin users receive a 403 envelope. */
+export async function requireAdmin(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const user = await authenticate(req);
+    if (user.role !== "admin") {
+      throw new ApiError(403, "FORBIDDEN", "Admin access required.");
+    }
+    req.user = user;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
 export function requireUser(req: Request): AuthUser {
   if (!req.user) {
     throw new ApiError(401, "UNAUTHORIZED", "Authentication required.");
@@ -146,4 +227,93 @@ export function isOwnerOrAdmin(
   if (user.role === "admin") return true;
   if (!owner) return false;
   return String(owner) === user.id;
+}
+import type { NextFunction, Request, Response } from "express";
+import jwt from "jsonwebtoken";
+import { env } from "../config/env.js";
+import { ApiError } from "../utils/ApiError.js";
+
+export type AuthUserRole = "user" | "admin";
+
+export interface AuthUser {
+  id: string;
+  role: AuthUserRole;
+}
+
+const BEARER_PATTERN = /^Bearer\s+(.+)$/i;
+
+interface AuthTokenPayload extends jwt.JwtPayload {
+  role?: AuthUserRole;
+}
+
+function extractBearerToken(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (!header) return null;
+  const match = BEARER_PATTERN.exec(header);
+  return match ? match[1] : null;
+}
+
+function verifyAuthUser(token: string): AuthUser {
+  let payload: AuthTokenPayload;
+  try {
+    payload = jwt.verify(token, env.JWT_SECRET, {
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
+    }) as AuthTokenPayload;
+  } catch {
+    throw new ApiError(401, "UNAUTHORIZED", "Invalid or expired token.");
+  }
+  if (typeof payload.sub !== "string" || payload.sub.length === 0) {
+    throw new ApiError(401, "UNAUTHORIZED", "Invalid token payload.");
+  }
+  return {
+    id: payload.sub,
+    role: payload.role === "admin" ? "admin" : "user",
+  };
+}
+
+/**
+ * M2+ M3 bridge: verifies the signed Bearer JWT and attaches `req.user`.
+ * Expired, malformed, or missing tokens are rejected with 401 (FR-AUTH-04/05).
+ */
+export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+  const token = extractBearerToken(req);
+  if (!token) {
+    throw new ApiError(401, "UNAUTHORIZED", "Authentication required.");
+  }
+  req.user = verifyAuthUser(token);
+  next();
+}
+
+/**
+ * Verifies a token but never rejects — used on public routes where an
+ * authenticated user gains access to their own drafts (guests get 404).
+ */
+export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  const token = extractBearerToken(req);
+  if (!token) {
+    next();
+    return;
+  }
+  try {
+    req.user = verifyAuthUser(token);
+  } catch {
+    // Invalid/expired token on a public route — treat as anonymous.
+  }
+  next();
+}
+
+/** Admin-only guard. Use after `requireAuth`. */
+export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {
+  if (req.user?.role !== "admin") {
+    throw new ApiError(403, "FORBIDDEN", "Admin access required.");
+  }
+  next();
+}
+
+/** FR-RECIPE-06: owner or admin may manage a resource (never UI-hiding only). */
+export function isOwnerOrAdmin(ownerId: unknown, user: AuthUser | undefined): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  return user.id === String(ownerId);
 }

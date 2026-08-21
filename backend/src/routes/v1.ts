@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authRouter } from "../controllers/authController.js";
 import { getDBState } from "../config/db.js";
 import { authLimiter } from "../middleware/rateLimit.js";
+import { recipesRouter } from "./recipes.js";
 
 export const v1Router = Router();
 
@@ -23,3 +24,5 @@ v1Router.use("/auth", authLimiter, authRouter);
 
 // M3: /recipes, /ai
 // M4: /recipes/:id/ratings, /recipes/:id/comments, /favorites, /admin
+
+v1Router.use("/recipes", recipesRouter);
