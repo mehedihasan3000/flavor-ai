@@ -77,7 +77,7 @@ export interface AuthUser {
   role: UserRole;
 }
 
-interface AccessTokenClaims {
+export interface AccessTokenClaims {
   sub: string;
   email: string;
   name?: string;

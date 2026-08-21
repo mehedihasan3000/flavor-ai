@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { authRouter } from "../controllers/authController.js";
 import { getDBState } from "../config/db.js";
 import { ratingsRouter } from "./ratings.js";
+import { authLimiter } from "../middleware/rateLimit.js";
 import { recipesRouter } from "./recipes.js";
 
 export const v1Router = Router();
@@ -18,8 +20,9 @@ v1Router.get("/health", (_req, res) => {
   });
 });
 
-// Endpoint groups mounted by workstreams (contract in docs/API_CONTRACT.md):
-// M2: /auth, /users
+// M2: Better Auth bridge (tighter rate limit on auth endpoints)
+v1Router.use("/auth", authLimiter, authRouter);
+
 // M3: /recipes, /ai
 // M4: /recipes/:id/ratings, /recipes/:id/comments, /favorites, /admin
 
