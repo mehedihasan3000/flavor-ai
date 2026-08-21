@@ -32,25 +32,25 @@ integration gates (Section 6).
 ## Phase A — Contract Freeze (Blocking; M1 + Team Lead)
 
 ### A1. Shared Types & Validation (`backend/src/types/index.ts`)
-- [ ] User preferences (`DietaryPreferences`, `Allergies`, `NutritionalGoals`)
-- [ ] AI generation input (`AIRecipePromptInput`, `IngredientInput`)
-- [ ] AI recipe output schema (`AIRecipeOutputSchema`) — the strict JSON contract for Groq
-- [ ] Rating, Comment, Favorite DTOs
-- [ ] Pantry match types (`usedIngredients` / `missingIngredients`)
-- [ ] Pagination + error envelope types (`{ status, code, safeMessage, validation? }`)
+- [x] User preferences (`DietaryPreferences`, `Allergies`, `NutritionalGoals`)
+- [x] AI generation input (`AIRecipePromptInput`, `IngredientInput`)
+- [x] AI recipe output schema (`AIRecipeOutputSchema`) — the strict JSON contract for Groq
+- [x] Rating, Comment, Favorite DTOs
+- [x] Pantry match types (`usedIngredients` / `missingIngredients`)
+- [x] Pagination + error envelope types (`{ status, code, safeMessage, validation? }`)
 
 ### A2. API Contract Document
-- [ ] Publish endpoint spec (request/response shapes for every endpoint group) into `docs/API_CONTRACT.md`
-- [ ] Enumerate: `/auth`, `/users(/me)`, `/recipes`, `/ai/recipes/generate`, `/ai/flavor-pairings`,
+- [x] Publish endpoint spec (request/response shapes for every endpoint group) into `docs/API_CONTRACT.md`
+- [x] Enumerate: `/auth`, `/users(/me)`, `/recipes`, `/ai/recipes/generate`, `/ai/flavor-pairings`,
       `/recipes/:id/ratings`, `/recipes/:id/comments`, `/favorites`, `/admin`
-- [ ] Define pagination (`page`/`limit`), sorting keys, filter params (`q`, `category`, `cuisine`, `diet`)
-- [ ] Team Lead approves → **contract frozen** (no shape changes without lead sign-off)
+- [x] Define pagination (`page`/`limit`), sorting keys, filter params (`q`, `category`, `cuisine`, `diet`)
+- [x] Team Lead approves → **contract frozen** (no shape changes without lead sign-off)
 
 ### A3. Monorepo & Tooling
-- [ ] Scaffold `frontend/` and `backend/` folders (no shared workspace build)
-- [ ] Backend: package.json, TypeScript strict, tsx/nodemon, lint + format
-- [ ] Frontend: create-next-app (App Router, TS, Tailwind, Gravity UI Icons, Better Auth)
-- [ ] `.env.example` + Zod env validation (never commit secrets)
+- [x] Scaffold `frontend/` and `backend/` folders (no shared workspace build)
+- [x] Backend: package.json, TypeScript strict, tsx/nodemon, lint + format
+- [x] Frontend: create-next-app (App Router, TS, Tailwind, Gravity UI Icons, Better Auth)
+- [x] `.env.example` + Zod env validation (never commit secrets)
 - [ ] Confirm auth bridge contract: issuer, audience, signing/verification, cookie policy, expiration, refresh, logout (SRS §9.4)
 
 ---
@@ -59,17 +59,17 @@ integration gates (Section 6).
 
 > **Goal:** The API runs, connects to MongoDB, and exposes the base app + all data models.
 
-- [ ] `backend/src/server.ts` — Express app, CORS, `/api/v1`, centralized error handler, structured logs
-- [ ] `backend/src/config/db.ts` — Mongoose connection, auto-indexes, reconnect retry
-- [ ] Rate limiting scaffold (`express-rate-limit`) wired app-wide
-- [ ] `User.ts` model — profile, dietary prefs, allergies, nutrition goals, role, provider identifiers, timestamps
-- [ ] `Recipe.ts` model — owner ref, source, title/slug/summary/image, ingredients w/ pantry-match, ordered steps, times, servings, difficulty, cuisine/category/tags, dietary labels, allergen warnings, nutrition estimate, status, aggregate counts
-- [ ] `Rating.ts` — unique compound index `(recipeId, userId)`
-- [ ] `Comment.ts` — moderation status
-- [ ] `Favorite.ts` — unique compound index `(recipeId, userId)`
-- [ ] `AIGenerationLog.ts` — inputs, provider/model, status, latency, error category
-- [ ] Indexes: unique email/provider identity, unique slug, text index, status+published, owner+created, comment recipe+created
-- [ ] Health check endpoint + smoke test against MongoDB
+- [x] `backend/src/server.ts` — Express app, CORS, `/api/v1`, centralized error handler, structured logs
+- [x] `backend/src/config/db.ts` — Mongoose connection, auto-indexes, reconnect retry
+- [x] Rate limiting scaffold (`express-rate-limit`) wired app-wide
+- [x] `User.ts` model — profile, dietary prefs, allergies, nutrition goals, role, provider identifiers, timestamps
+- [x] `Recipe.ts` model — owner ref, source, title/slug/summary/image, ingredients w/ pantry-match, ordered steps, times, servings, difficulty, cuisine/category/tags, dietary labels, allergen warnings, nutrition estimate, status, aggregate counts
+- [x] `Rating.ts` — unique compound index `(recipeId, userId)`
+- [x] `Comment.ts` — moderation status
+- [x] `Favorite.ts` — unique compound index `(recipeId, userId)`
+- [x] `AIGenerationLog.ts` — inputs, provider/model, status, latency, error category
+- [x] Indexes: unique email/provider identity, unique slug, text index, status+published, owner+created, comment recipe+created
+- [x] Health check endpoint + smoke test against MongoDB
 
 ---
 
@@ -78,12 +78,12 @@ integration gates (Section 6).
 > **Goal:** Better Auth client flow ↔ Express JWT bridge works end-to-end; profile/preferences editable.
 
 ### Backend
-- [ ] `middleware/auth.ts` — Bearer JWT verification, attach `req.user`, reject expired/malformed/unauthorized (FR-AUTH-04/05)
-- [ ] Role + ownership guards (owner-or-admin for edit/unpublish/delete; FR-RECIPE-06)
-- [ ] `authController.ts` — Better Auth integration + token verification
+- [x] `middleware/auth.ts` — Bearer JWT verification, attach `req.user`, reject expired/malformed/unauthorized (FR-AUTH-04/05)
+- [x] Role + ownership guards (owner-or-admin for edit/unpublish/delete; FR-RECIPE-06)
+- [x] `authController.ts` — Better Auth integration + token verification
 - [ ] `userController.ts` — `/users/me` view/update profile + preferences (FR-AUTH-06)
 - [ ] Password hashing if used; never return in plain text (FR-AUTH-07)
-- [ ] Rate limiting on auth endpoints (NFR-SEC-07)
+- [x] Rate limiting on auth endpoints (NFR-SEC-07)
 
 ### Frontend (auth pages)
 - [ ] `(auth)/sign-in/page.tsx`, `(auth)/sign-up/page.tsx` via Better Auth
@@ -97,8 +97,8 @@ integration gates (Section 6).
 > **Goal:** Manual recipe CRUD + AI generation (Groq) produce schema-valid recipes that save as draft or publish.
 
 ### Backend
-- [ ] `recipeController.ts` — CRUD, draft/publish/unpublish/delete, ownership enforced (FR-RECIPE-01..06)
-- [ ] Paginated search + filters: `q`, `category`, `cuisine`, `diet`, `sort`, `page`, `limit` (FR-SEARCH-01..05)
+- [x] `recipeController.ts` — CRUD, draft/publish/unpublish/delete, ownership enforced (FR-RECIPE-01..06)
+- [x] Paginated search + filters: `q`, `category`, `cuisine`, `diet`, `sort`, `page`, `limit` (FR-SEARCH-01..05)
 - [ ] `aiService.ts` — Groq adapter (`llama-3.3-70b-versatile` / `mixtral-8x7b-32768`)
 - [ ] Constrained prompt builder enforcing strict JSON schema output
 - [ ] Server-side Zod validation on ALL AI output; invalid/incomplete NOT stored (FR-AI-07)
@@ -123,8 +123,8 @@ integration gates (Section 6).
 > **Goal:** Ratings, comments, favorites, and admin moderation behave per business rules with security hardening.
 
 ### Backend
-- [ ] `ratingController.ts` — create/update/remove; integer 1–5; one per user per recipe; owner can't rate own (FR-RATE-01..05)
-- [ ] Aggregate rating recalculation after changes
+- [x] `ratingController.ts` — create/update/remove; integer 1–5; one per user per recipe; owner can't rate own (FR-RATE-01..05)
+- [x] Aggregate rating recalculation after changes
 - [ ] `commentController.ts` — add/list/delete; length validation + sanitization; owner deletion (FR-COMMENT-01..05)
 - [ ] `favoriteController.ts` — add/list/remove; uniqueness enforced; private list (FR-FAV-01..04)
 - [ ] `adminController.ts` — role-protected moderation of recipes/comments, actions logged (FR-ADMIN-01..04)
@@ -205,4 +205,17 @@ integration gates (Section 6).
 > Log updates here as phases complete. Format: `[date] [Member/Lead] What was done, decisions, blockers.`
 
 - `[2026-08-16] [Lead]` Roadmap restructured for 5-member parallel team. Contract freeze (Phase A) is the entry gate; M2–M5 code in parallel against the frozen contract on separate branches.
-- `[2026-08-16] [Lead]` No implementation started yet. Source of truth: SRS, IMPLEMENTATION_PLAN, AGENTS.md.
+- `[2026-08-16] [Lead]` **M1 foundation implemented on `feature/m1-foundation`:** backend scaffold (Express, TS strict, vitest, ESLint/Prettier), shared Zod contract in `backend/src/types/index.ts`, Zod env validation, all 6 Mongoose models + indexes, server/error-handler/rate-limit/health endpoint, `docs/API_CONTRACT.md`, frontend scaffolded via create-next-app. Build + lint + 12 unit tests pass. Smoke test against MongoDB pending Atlas URI.
+- `[2026-08-16] [Lead]` Next: paste Atlas URI into `backend/.env` → run live smoke test, then sign off contract freeze.
+- `[2026-08-16] [Lead]` **Live smoke test PASSED** against MongoDB Atlas — `/api/v1/health` → 200, DB connected, server boots. **Contract is now FROZEN.** M2–M5 may start in parallel: each opens opencode in `flavor-ai/` on their own branch off `develop` and prompts per AGENTS.md. Merge order: M2 → M3/M4 → M5.
+- `[2026-08-16] [Lead]` **Phase A hardening:** Mongoose E11000 duplicate-key now maps to 409 `CONFLICT` (errorHandler, +2 tests). `config/env.ts` gets a test-mode fallback so a fresh clone without `.env` no longer hard-crashes `npm test`. Build ✓, lint ✓, 14/14 tests ✓.
+- `[2026-08-18] [M2]` **Task 1 of M2 done:** `middleware/auth.ts` — `verifyAccessToken` (HS256, issuer/audience/expiry, 401 on expired/malformed/unauthorized), `authenticate` (hydrates `req.user` from Mongo by `providerId`), `requireRole`/`requireAdmin` guards (403), `isOwnerOrAdmin` helper (FR-RECIPE-06), Express `Request.user` augmentation. Tests `tests/auth.test.ts` (21 cases, UserModel mocked). Build ✓, lint ✓, 35/35 tests ✓.
+- `[2026-08-18] [M2]` **Task 2 of M2 done:** `authController.ts` mounted at `/auth` (with tighter `authLimiter`, 50/15min per NFR-SEC-07) — `POST /auth/token/verify` verifies the JWT and lazily upserts the user via `findOneAndUpdate` on `providerId` (`$setOnInsert`, atomic/race-safe), returns `{ user }`; `POST /auth/logout` → 204 (stateless, contract-compliant). JWT policy finalized in `docs/API_CONTRACT.md` `/auth` section (HS256, issuer/audience/expiry). Tests `tests/authController.test.ts` (7 cases via supertest). Build ✓, lint ✓, 42/42 tests ✓.
+- `[2026-08-17] [M3]` **M3 step 1 — recipe CRUD core done on `feature/m3-recipes-ai`.** Added `middleware/auth.ts` (minimal JWT bridge: `requireAuth`/`optionalAuth`/`requireAdmin`/`isOwnerOrAdmin`, issuer+audience from env — M2 reconciles at merge), `middleware/validate.ts`, `utils/asyncHandler.ts`, `controllers/recipeController.ts` (create→draft, get w/ draft visibility rules, update/delete/publish/unpublish owner-or-admin, totalTime recompute), `routes/recipes.ts` mounted in v1.ts, `req.user` type augmentation. `mongodb-memory-server` added for DB-backed integration tests (17 new → 31/31 pass; build+lint clean). **Found + fixed M1 model bug:** `User.providerId` default `null` broke the sparse unique index (second user → E11000); changed default to `undefined` so the field is absent unless set — flag to Lead for M1 sign-off.
+- `[2026-08-17] [M3]` **M3 step 2 — paginated recipe search done.** `GET /recipes` (public): `searchRecipes` in `recipeController.ts` — `q` text search (title/summary/ingredients text index), filters `category`/`cuisine`/`diet`/`difficulty`/`maxCookingTimeMinutes`, sorts `newest`/`highest-rated`/`most-popular`, `page`/`limit` → `PaginatedResult` envelope. Query validated by `validateQuery(RecipeSearchQuery)`. +8 tests (tests/recipeSearch.test.ts) → 39/39 pass; build+lint clean.
+- `[2026-08-18] [M4]` **M4 Step 1 — auth prerequisite:** implemented `backend/src/middleware/auth.ts` (`requireAuth` + `requireAdmin`) matching the M2 auth-bridge spec (Bearer JWT verify w/ issuer+audience, fresh user state via `UserModel.findById`, 401/403 envelopes) and `backend/src/types/auth.ts` (`AuthUser` + Express `Request.user` augmentation). 10 new unit tests (`tests/auth.test.ts`) cover missing/malformed/expired/wrong-secret/mismatched-audience tokens, deleted user, admin 403, admin 200. Reconcile with M2's version at merge. Build ✓, lint ✓, 24/24 tests ✓.
+- `[2026-08-18] [M4]` **M4 Step 2 — ratings:** `ratingController.ts` (GET public summary, PUT idempotent upsert, DELETE own rating), aggregate recalculation (`RatingModel.aggregate` → recipe `averageRating`/`ratingCount`), owner-cannot-rate → 403, integer 1–5 via `CreateRatingInput`, published-only guard (`utils/recipeAccess.ts`), ObjectId param validation (`utils/params.ts`), `asyncHandler` util, mounted at `/recipes/:id/ratings` (`Router({ mergeParams: true })`). 11 new tests. Build ✓, lint ✓, 36/36 tests ✓.
+- `[2026-08-18] [M4]` **Auth review fixes:** `auth.ts` now validates `sub` against `ObjectIdString` before `findById` (signature-valid non-ObjectId `sub` → 401 instead of a Mongoose CastError 500; +1 test), `AuthUser.role` derives from `USER_ROLE`, and stray `package-lock.json` churn reverted. Build ✓, lint ✓, 25/25 tests ✓.
+- `[2026-08-18] [M4]` **Auth review fixes:** `auth.ts` now validates `sub` against `ObjectIdString` before `findById` (signature-valid non-ObjectId `sub` → 401 instead of a Mongoose CastError 500; +1 test), `AuthUser.role` derives from `USER_ROLE`, and stray `package-lock.json` churn reverted. Build ✓, lint ✓, 25/25 tests ✓.
+- `[2026-08-18] [M2]` **Task 1 of M2 done:** `middleware/auth.ts` — `verifyAccessToken` (HS256, issuer/audience/expiry, 401 on expired/malformed/unauthorized), `authenticate` (hydrates `req.user` from Mongo by `providerId`), `requireRole`/`requireAdmin` guards (403), `isOwnerOrAdmin` helper (FR-RECIPE-06), Express `Request.user` augmentation. Tests `tests/auth.test.ts` (21 cases, UserModel mocked). Build ✓, lint ✓, 35/35 tests ✓.
+- `[2026-08-17] [M3]` **M3 step 1 — recipe CRUD core done on `feature/m3-recipes-ai`.** Added `middleware/auth.ts` (minimal JWT bridge: `requireAuth`/`optionalAuth`/`requireAdmin`/`isOwnerOrAdmin`, issuer+audience from env — M2 reconciles at merge), `middleware/validate.ts`, `utils/asyncHandler.ts`, `controllers/recipeController.ts` (create→draft, get w/ draft visibility rules, update/delete/publish/unpublish owner-or-admin, totalTime recompute), `routes/recipes.ts` mounted in v1.ts, `req.user` type augmentation. `mongodb-memory-server` added for DB-backed integration tests (17 new → 31/31 pass; build+lint clean). **Found + fixed M1 model bug:** `User.providerId` default `null` broke the sparse unique index (second user → E11000); changed default to `undefined` so the field is absent unless set — flag to Lead for M1 sign-off.

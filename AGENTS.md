@@ -1,160 +1,111 @@
 # FlavorAI — Project Rules
 
-## Project Overview
+FlavorAI is a smart recipe generator & food-sharing platform (Next.js frontend +
+Express API). Source of truth: `FlavorAI - SRS.md` (requirements),
+`IMPLEMENTATION_PLAN.md` (architecture), `docs/API_CONTRACT.md` (frozen API
+shapes), `TASKS.md` (living roadmap — tick boxes as work completes).
 
-FlavorAI is a smart recipe generator & food-sharing platform. Users enter
-ingredients they already have, set dietary/nutritional preferences, and receive
-AI-generated structured recipes. They can also publish, search, rate, review,
-comment on, and favorite community recipes.
+## Repo Layout
 
-Source of truth: `FlavorAI - SRS.md` (requirements) and `IMPLEMENTATION_PLAN.md`
-(architecture + delivery plan). Read both before making architectural decisions.
+Monorepo with **two independent packages, no shared workspace build**:
 
-**MVP priority order:** authentication → recipe CRUD → AI generation →
-search/discovery → ratings/comments/favorites → nutrition & pantry refinement.
-Taste-profile recommendations and food-photo nutrition analysis are post-MVP.
+- `frontend/` — Next.js (App Router, TS, Tailwind v4, Better Auth, Gravity UI Icons)
+- `backend/` — Express 4 REST API (TS strict, ESM/NodeNext, Mongoose, Zod, JWT)
 
-## Tech Stack & Monorepo Layout
+Own scripts per package. Run commands from the package dir — there is no root
+`package.json`.
 
-Two top-level folders, no shared workspace build:
+## Commands
 
-- `frontend/` — Next.js (App Router), TypeScript, Tailwind CSS, Better Auth, Gravity UI Icons
-- `backend/` — Express.js REST API, TypeScript, MongoDB + Mongoose, Zod, JWT middleware
+Backend (`backend/`):
 
-External services: Groq AI API (recipe generation, flavor pairing), ImgBB (image
-hosting), MongoDB Atlas (or equivalent).
+- `npm run dev` — tsx watch, loads `.env`
+- `npm run build` — `tsc` (strict)
+- `npm run lint` — ESLint, **0 warnings required** (`--max-warnings=0`)
+- `npm test` — Vitest (unit + supertest), tests in `backend/tests/`
+- `npm run format` / `format:check` — Prettier
 
-## Architecture & Conventions
+Frontend (`frontend/`): `npm run dev`, `npm run build`, `npm run lint` (next).
 
-- Request flow: `Next.js UI → HTTPS REST API → Zod validation → auth/authorization → service layer → MongoDB or AI/nutrition service → normalized response`
-- Versioned base path: `/api/v1`
-- JSON bodies except multipart image uploads
-- Consistent error format: `{ status, code, safeMessage, validation? }` with correct HTTP status codes
-- Pagination: `page` / `limit`
-- Separate routes/controllers, services, data models, validation schemas, and provider adapters
+Verification order that matters: `npm run build` → `npm run lint` → `npm test`.
+For a single test file: `npx vitest run tests/types.test.ts`.
 
-## Authentication Bridge (CRITICAL)
+## Setup Gotchas
 
-- Better Auth manages user-facing auth/session on the client.
-- Express API receives signed Bearer JWTs; middleware verifies signature,
-  extracts user context, and enforces role/ownership authorization.
-- Reject expired, malformed, or unauthorized tokens.
-- Secrets/refresh credentials must never reach browser JS; prefer secure,
-  HTTP-only, SameSite cookies where the deployment allows.
-- Passwords (when used) are hashed; never returned in plain text.
-- Note: JWT issuer, audience, signing/verification, cookie policy, expiration,
-  refresh, and logout must be defined before implementation (SRS risk item).
+- **`backend/.env` is required before ANY backend command** (incl. `npm test`).
+  `src/config/env.ts` validates env with Zod and calls `process.exit(1)` at import
+  time if anything is missing/invalid — so a fresh clone with no `.env` hard-crashes.
+  Copy `backend/.env.example` → `.env`; it holds the real MongoDB Atlas URI.
+  `.env` is gitignored; never commit or log it.
+- Node `>=20`. NodeNext ESM: **relative imports need a `.js` extension**
+  (e.g. `import { env } from "./config/env.js"`). Dropping it breaks `npm run build`.
+- Frontend: `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api/v1`) via
+  `frontend/.env.local`.
 
-## AI Integration Rules
+## Architecture Notes
 
-- Model options: `llama-3.3-70b-versatile` / `mixtral-8x7b-32768` via Groq API.
-- Use constrained prompts enforcing strict JSON schema output.
-- Server-side Zod validation on ALL AI output; invalid/incomplete output must
-  NOT be stored (FR-AI-07).
-- On provider failure/timeout, return a safe, retryable error — never leak
-  internal errors (FR-AI-08).
-- Target completion within 30s with visible progress and a defined timeout.
-- Pantry matching: compute `usedIngredients` vs `missingIngredients`.
-- Respect dietary + allergy constraints in generated content and flavor pairings.
+- **The API contract is FROZEN.** `backend/src/types/index.ts` is the executable
+  source of truth (Zod schemas + enums + DTOs); `docs/API_CONTRACT.md` mirrors it.
+  Do NOT change shapes without Team Lead sign-off. Build new controllers against
+  these schemas, don't re-declare types.
+- Only M1 exists so far: server, DB config, all 6 Mongoose models (User, Recipe,
+  Rating, Comment, Favorite, AIGenerationLog) with indexes, error handler, rate
+  limit, `/api/v1/health`. **Controllers/services for auth, recipes, AI, ratings,
+  comments, favorites, admin are not built yet** — M2–M5 mount their routers in
+  `backend/src/routes/v1.ts`.
+- Every response must use the error envelope `{ status, code, safeMessage, validation? }`.
+  `src/middleware/errorHandler.ts` maps `ZodError` → 400, `ApiError` → its status, and
+  Mongoose duplicate-key (E11000) → 409 `CONFLICT`.
+- `Recipe.totalTimeMinutes` is computed in a `pre("save")` hook only — not on
+  `findOneAndUpdate`. Recompute in services when editing recipes.
+- Indexes already on models: unique email + sparse unique providerId (User), unique
+  slug + text index on `title/summary/ingredients.name` + status/publishedAt +
+  owner/createdAt (Recipe), unique `(recipe,user)` compound (Rating, Favorite),
+  recipe+createdAt (Comment), user+createdAt (AIGenerationLog).
+- `autoIndex` is disabled in production (`config/db.ts`) — deploy step must create
+  indexes (e.g. `syncIndexes()`) before release.
 
-## Domain Rules (Business Rules)
+## Domain Rules (must enforce in backend)
 
-1. Only authenticated users can generate, save, publish, rate, comment, or favorite.
-2. Only the recipe owner or an admin can edit, unpublish, or delete a recipe.
-   Enforce on the backend — hiding UI buttons is NOT sufficient authorization (FR-RECIPE-06).
-3. Drafts are visible only to their owner and authorized admins.
-4. Only published, non-hidden recipes appear in public discovery.
-5. Ratings are integers 1–5; one active rating per user per recipe; re-rating updates,
-   never duplicates; owner may not rate own recipe (recommended MVP rule).
-6. Favorites are unique per user per recipe.
-7. Dietary/allergen compliance is never guaranteed from AI output; warnings are mandatory.
-8. Never expose another user's private profile, drafts, favorites, or tokens.
-9. Moderated/deleted content must not remain publicly searchable.
+1. Only authenticated users generate/save/publish/rate/comment/favorite.
+2. Only recipe owner or admin edits/unpublishes/deletes a recipe — enforce in
+   backend, never just by hiding UI (FR-RECIPE-06).
+3. Drafts visible only to owner + admins; only published, non-hidden recipes in
+   public discovery.
+4. Ratings: integer 1–5, one active per user per recipe, re-rate updates (never
+   duplicates), owner cannot rate own.
+5. Favorites: unique per user per recipe.
+6. Allergen/dietary compliance is never guaranteed by AI output — warnings mandatory.
+7. Never expose another user's private profile, drafts, favorites, or tokens.
+8. Moderated/deleted content must not remain publicly searchable.
 
-## Data Models
+## Auth Bridge (CRITICAL)
 
-- **User:** name, email, avatar, bio, provider identifiers, role (`user`|`admin`),
-  dietary preferences, allergies, disliked ingredients, nutrition goals, timestamps
-- **Recipe:** owner, source (`manual`|`ai`), title, slug, summary, image, ingredients
-  (name/qty/unit/notes/pantry-match), ordered steps, times, servings, difficulty,
-  cuisine, category, tags, dietary labels, allergen warnings, nutrition estimate,
-  status (`draft`|`published`|`hidden`), aggregate rating/favorite/comment counts, timestamps
-- **Rating:** unique compound index `(recipeId, userId)`
-- **Comment:** body, moderation status, timestamps
-- **Favorite:** unique compound index `(recipeId, userId)`
-- **AIGenerationLog:** user, inputs, provider/model, status, latency, error category, timestamps
+Better Auth handles client auth/session; the Express API receives signed Bearer
+JWTs. `middleware/auth.ts` verifies signature → `req.user`, rejects
+expired/malformed/unauthorized. Secrets never reach browser JS; prefer secure,
+HTTP-only, SameSite cookies. Passwords (if used) hashed, never returned.
+Issuer/audience/expiry/refresh/logout policy per SRS §9.4 (to be finalized in M2).
 
-Indexes: unique email/provider identity, unique slug, text index on
-`title` + `summary` + `ingredients.name`, status+published date, owner+created
-date, rating/favorite uniqueness, comment recipe+created date.
+## AI Rules
 
-## API Endpoint Groups
-
-- `/auth` — auth integration, session/token ops
-- `/users` and `/users/me` — profile & preferences
-- `/recipes` — CRUD, publishing, search, details
-- `/ai/recipes/generate` — AI recipe generation
-- `/ai/flavor-pairings` — flavor suggestions
-- `/recipes/:id/ratings` — create/update/remove/summarize
-- `/recipes/:id/comments` — comment/review ops
-- `/favorites` — user's favorites
-- `/admin` — protected moderation
-
-## Security Requirements
-
-- All production traffic over HTTPS; secrets in env config, never in source control.
-- Validate ALL untrusted input with Zod.
-- Mitigate XSS, injection, CSRF (cookie auth), insecure direct object references,
-  and abusive request rates.
-- Sanitize recipe and comment content before rendering.
-- Rate limit auth, AI, comment, and upload endpoints.
-- Validate image MIME type, extension, file size, and storage permissions.
-
-## Frontend Requirements
-
-- App Router pages: landing, `(auth)` sign-in/sign-up, generator, recipes list,
-  recipe detail, recipe create/edit, dashboard, favorites, profile, admin.
-- Components: Navbar, Footer, IngredientTagInput, RecipeCard, NutritionBadge,
-  RatingStars, CommentSection, DisclaimerBanner.
-- Design: food-focused, clean, mobile-first responsive Tailwind; glassmorphism
-  accents; Gravity UI Icons; icons must never be the sole meaning carrier (WCAG 2.1 AA).
-- Every form needs labels, validation messages, keyboard access, focus states,
-  and loading/disabled states.
-- Show useful empty, loading, success, and error states everywhere.
-
-## Recipe Content Requirements
-
-- Display estimated calories, protein, carbs, fat per serving when available.
-- Label nutrition as estimates and state servings used; missing values show as
-  "unavailable" — never fabricated.
-- Show allergy/AI-accuracy disclaimers in generation AND recipe views.
-
-## Testing & Verification
-
-- Unit tests: Zod schemas, pantry matching, AI response parser.
-- API integration tests: auth, recipe CRUD, ratings, comments, favorites, AI error handling.
-- Frontend component/form tests: generator form, validation errors, auth states.
-- E2E: sign-in → generate → save/publish → search → rate → comment → favorite.
-- Manual: responsive + accessibility checks.
-- Definition of done: client+server validation present, authorization enforced by
-  API, tests pass, loading/empty/success/error handled, works on desktop + mobile,
-  no critical/high defects open.
+- Groq models `llama-3.3-70b-versatile` / `mixtral-8x7b-32768`. Constrained prompts
+  enforcing strict JSON; **server-side Zod-validate ALL AI output — invalid output
+  must NOT be stored** (FR-AI-07). On provider failure/timeout return a safe,
+  retryable error, never leak internals (FR-AI-08). Timeout ≤30s. Pantry matching:
+  `usedIngredients` vs `missingIngredients`. Respect dietary + allergy constraints.
 
 ## Team Workflow with opencode
 
-Team of 5 working in parallel. Roles/workstreams live in `TASKS.md`; API shapes
-live in `docs/API_CONTRACT.md`. Every member opens opencode in `flavor-ai/` and
-prompts it against these files — opencode reads AGENTS.md, TASKS.md, and the
-contract automatically.
+5 members, parallel. Roles/tasks live in `TASKS.md`; API shapes in
+`docs/API_CONTRACT.md`. Each member opens opencode in the repo root and prompts
+against these files (opencode reads AGENTS.md, TASKS.md, and the contract
+automatically). Members work on `feature/<name>` branches off `develop`; Lead
+merges in order **M1 → M2/M3/M4 → M5**. End every task by ticking TASKS.md and
+logging a dated note.
 
-**General workflow**
-1. Open opencode in the repo root.
-2. Give a structured prompt: your workstream/task (from TASKS.md), what to build,
-   which files, and how to verify.
-3. opencode builds the code, runs tests, and ticks completed tasks in TASKS.md.
-4. Commit on your own branch, push; Team Leader merges in order M1 → M2/M3/M4 → M5.
+**Prompt template:**
 
-**Prompt template**
 ```
 I'm [M#] working on Workstream [M# — name] from TASKS.md.
 I'll follow docs/API_CONTRACT.md and AGENTS.md rules.
@@ -165,39 +116,17 @@ Verify: run [test/lint command] and report results.
 When done, tick the completed tasks in TASKS.md and log a note.
 ```
 
-**Per-member prompts**
+Per-member prompts (M1 done): M2 — auth bridge (`middleware/auth.ts`, auth/user
+controllers, sign-in/sign-up pages, FR-AUTH-04..07). M3 — recipe CRUD + Groq
+`aiService` + Zod-validated output + pantry matching + flavor pairing + ImgBB
+`imageService` + generator page. M4 — ratings/comments/favorites/admin
+controllers, draft/hidden exclusion from search, discovery/favorites/admin pages.
+M5 — global layout (glassmorphism), landing + profile pages, all form/states +
+WCAG 2.1 AA, responsive ≥320px.
 
-- M1 — Backend Foundation: "I'm M1. Build the Express backend foundation per
-  TASKS.md M1: `server.ts` with `/api/v1`, centralized error handler
-  `{status, code, safeMessage, validation?}`, `config/db.ts` with auto-indexes,
-  and all six Mongoose models with documented indexes. Then write
-  `docs/API_CONTRACT.md` for every endpoint group. Verify with a health-check
-  smoke test against MongoDB."
-- M2 — Auth: "I'm M2. Build `middleware/auth.ts` (Bearer JWT verify → `req.user`,
-  reject expired/malformed), auth + user controllers for `/auth` and `/users/me`,
-  plus frontend `(auth)/sign-in` and `sign-up` pages via Better Auth. Enforce
-  FR-AUTH-04/05/06/07. Verify the JWT bridge end-to-end against the M1 API."
-- M3 — Recipes & AI: "I'm M3. Build `recipeController` (CRUD + draft/publish,
-  ownership enforced), the Groq `aiService` with strict JSON prompts, Zod
-  validation of AI output (never store invalid — FR-AI-07), pantry matching
-  (used vs missing), flavor pairing, and ImgBB `imageService`. Build the
-  generator page. Verify with unit tests for pantry matching and the AI parser."
-- M4 — Community: "I'm M4. Build rating (1–5, one per user, owner can't rate
-  own), comment (sanitized, length-validated), favorite (unique), and admin
-  moderation controllers per FR-RATE/COMMENT/FAV/ADMIN. Ensure draft/hidden
-  recipes never appear in public search. Build discovery, favorites, admin pages."
-- M5 — Frontend Lead: "I'm M5. Build the global layout (glassmorphism theme,
-  Navbar, Footer), landing page, and profile page. Ensure every form has labels,
-  validation, focus states, loading/disabled states, and empty/error states
-  (NFR-UX-02/05). WCAG 2.1 AA, responsive ≥320px."
+## Workflow Rules
 
-**Pointers**
-- One feature per prompt for clean diffs; let opencode run tests after each chunk.
-- Always end a task by updating TASKS.md (living roadmap).
-- If the contract is missing or changes, read `docs/API_CONTRACT.md` first.
-
-## Workflow
-
-- After saving any opencode config change, remind the user to restart opencode.
-- Follow the existing file/folder conventions described in IMPLEMENTATION_PLAN.md.
+- Update TASKS.md (living roadmap) when you complete work; log dated notes.
 - Do not commit unless explicitly asked.
+- After saving any opencode config change, remind the user to restart opencode.
+- Keep `backend/src/types/index.ts` and `docs/API_CONTRACT.md` in sync.
