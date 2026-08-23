@@ -99,16 +99,16 @@ integration gates (Section 6).
 ### Backend
 - [x] `recipeController.ts` — CRUD, draft/publish/unpublish/delete, ownership enforced (FR-RECIPE-01..06)
 - [x] Paginated search + filters: `q`, `category`, `cuisine`, `diet`, `sort`, `page`, `limit` (FR-SEARCH-01..05)
-- [ ] `aiService.ts` — Groq adapter (`llama-3.3-70b-versatile` / `mixtral-8x7b-32768`)
-- [ ] Constrained prompt builder enforcing strict JSON schema output
-- [ ] Server-side Zod validation on ALL AI output; invalid/incomplete NOT stored (FR-AI-07)
-- [ ] Timeout (≤30s) + safe retryable error on provider failure (FR-AI-08, NFR-PERF-03)
-- [ ] Pantry matching: `usedIngredients` vs `missingIngredients` (FR-PANTRY-01..03)
-- [ ] Flavor-pairing suggestions respecting dietary/allergy constraints (FR-FLAVOR-01..03)
-- [ ] Nutrition estimate per serving; missing → unavailable, never fabricated (FR-NUTR-01..04)
-- [ ] `imageService.ts` — ImgBB upload; MIME/extension/size validation (NFR-SEC-08)
-- [ ] `aiController.ts` — `/ai/recipes/generate`, `/ai/flavor-pairings`
-- [ ] Rate limiting on AI + upload endpoints (NFR-SEC-07)
+- [x] `aiService.ts` — Groq adapter (`openai/gpt-oss-120b` / `qwen/qwen3.6-27b`)
+- [x] Constrained prompt builder enforcing strict JSON schema output
+- [x] Server-side Zod validation on ALL AI output; invalid/incomplete NOT stored (FR-AI-07)
+- [x] Timeout (≤30s) + safe retryable error on provider failure (FR-AI-08, NFR-PERF-03)
+- [x] Pantry matching: `usedIngredients` vs `missingIngredients` (FR-PANTRY-01..03)
+- [x] Flavor-pairing suggestions respecting dietary/allergy constraints (FR-FLAVOR-01..03)
+- [x] Nutrition estimate per serving; missing → unavailable, never fabricated (FR-NUTR-01..04)
+- [x] `imageService.ts` — ImgBB upload; MIME/extension/size validation (NFR-SEC-08)
+- [x] `aiController.ts` — `/ai/recipes/generate`, `/ai/flavor-pairings`
+- [x] Rate limiting on AI + upload endpoints (NFR-SEC-07)
 
 ### Frontend
 - [ ] `generator/page.tsx` — ingredient tags, dietary checkboxes, time/difficulty, progress, regenerate
@@ -223,3 +223,6 @@ integration gates (Section 6).
 - `[2026-08-18] [M4]` **Auth review fixes:** `auth.ts` now validates `sub` against `ObjectIdString` before `findById` (signature-valid non-ObjectId `sub` → 401 instead of a Mongoose CastError 500; +1 test), `AuthUser.role` derives from `USER_ROLE`, and stray `package-lock.json` churn reverted. Build ✓, lint ✓, 25/25 tests ✓.
 - `[2026-08-18] [M2]` **Task 1 of M2 done:** `middleware/auth.ts` — `verifyAccessToken` (HS256, issuer/audience/expiry, 401 on expired/malformed/unauthorized), `authenticate` (hydrates `req.user` from Mongo by `providerId`), `requireRole`/`requireAdmin` guards (403), `isOwnerOrAdmin` helper (FR-RECIPE-06), Express `Request.user` augmentation. Tests `tests/auth.test.ts` (21 cases, UserModel mocked). Build ✓, lint ✓, 35/35 tests ✓.
 - `[2026-08-17] [M3]` **M3 step 1 — recipe CRUD core done on `feature/m3-recipes-ai`.** Added `middleware/auth.ts` (minimal JWT bridge: `requireAuth`/`optionalAuth`/`requireAdmin`/`isOwnerOrAdmin`, issuer+audience from env — M2 reconciles at merge), `middleware/validate.ts`, `utils/asyncHandler.ts`, `controllers/recipeController.ts` (create→draft, get w/ draft visibility rules, update/delete/publish/unpublish owner-or-admin, totalTime recompute), `routes/recipes.ts` mounted in v1.ts, `req.user` type augmentation. `mongodb-memory-server` added for DB-backed integration tests (17 new → 31/31 pass; build+lint clean). **Found + fixed M1 model bug:** `User.providerId` default `null` broke the sparse unique index (second user → E11000); changed default to `undefined` so the field is absent unless set — flag to Lead for M1 sign-off.
+- `[2026-08-17] [M3]` **M3 step 2 — paginated recipe search done.** `GET /recipes` (public): `searchRecipes` in `recipeController.ts` — `q` text search (title/summary/ingredients text index), filters `category`/`cuisine`/`diet`/`difficulty`/`maxCookingTimeMinutes`, sorts `newest`/`highest-rated`/`most-popular`, `page`/`limit` → `PaginatedResult` envelope. Query validated by `validateQuery(RecipeSearchQuery)`. +8 tests (tests/recipeSearch.test.ts) → 39/39 pass; build+lint clean.
+- `[2026-08-23] [M3]` **M3 step 3 — Groq AI service + Pantry matching + Flavor pairing done on `feature/m3-recipes-ai`.** Created `backend/src/services/aiService.ts` with Groq API integration (`openai/gpt-oss-120b`, `qwen/qwen3.6-27b`, `llama-3.3-70b-versatile`), JSON prompt builder enforcing strict output, server-side Zod validation (`AIRecipeOutputSchema`, `FlavorPairingSuggestionSchema`), configurable timeout (≤30s) + retryable `AI_PROVIDER_ERROR` (502/504), pantry matching engine (`matchPantry`), flavor pairing generator (`generateFlavorPairings`), and `AIGenerationLog` telemetry. +8 tests (`tests/aiService.test.ts`) → 47/47 pass; build ✓, lint (0 warnings) ✓.
+- `[2026-08-23] [M3]` **M3 step 4 — All remaining M3 backend tasks completed.** Implemented `imageService.ts` (ImgBB API upload + MIME/extension/size validation, NFR-SEC-08), `uploadController.ts` (`POST /upload/image`), `aiController.ts` (`POST /ai/recipes/generate`, `POST /ai/flavor-pairings`), rate limiting middleware (`aiRateLimiter`, `uploadRateLimiter`, NFR-SEC-07), and mounted routes in `v1Router`. Added 14 new tests (`tests/imageService.test.ts` & `tests/aiController.test.ts`) → **61/61 tests pass**; build ✓, lint (0 warnings) ✓.

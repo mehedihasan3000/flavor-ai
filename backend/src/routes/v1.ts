@@ -2,9 +2,11 @@ import { Router } from "express";
 import { authRouter } from "../controllers/authController.js";
 import { userRouter } from "../controllers/userController.js";
 import { getDBState } from "../config/db.js";
+import { aiRouter } from "./ai.js";
 import { ratingsRouter } from "./ratings.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { recipesRouter } from "./recipes.js";
+import { uploadRouter } from "./upload.js";
 
 export const v1Router = Router();
 
@@ -32,3 +34,5 @@ v1Router.use("/users", userRouter);
 
 v1Router.use("/recipes/:id/ratings", ratingsRouter);
 v1Router.use("/recipes", recipesRouter);
+v1Router.use("/ai", aiRouter);
+v1Router.use("/upload", uploadRouter);
