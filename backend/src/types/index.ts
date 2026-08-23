@@ -204,6 +204,8 @@ export const FlavorPairingInput = z.object({
   preferences: DietaryPreferences.optional(),
 });
 
+export type FlavorPairingInput = z.infer<typeof FlavorPairingInput>;
+
 export const FlavorPairingSuggestionSchema = z.object({
   ingredient: z.string().min(1).max(100),
   reason: z.string().min(3).max(300),
