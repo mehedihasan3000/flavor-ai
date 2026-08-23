@@ -99,7 +99,7 @@ integration gates (Section 6).
 ### Backend
 - [ ] `recipeController.ts` — CRUD, draft/publish/unpublish/delete, ownership enforced (FR-RECIPE-01..06)
 - [ ] Paginated search + filters: `q`, `category`, `cuisine`, `diet`, `sort`, `page`, `limit` (FR-SEARCH-01..05)
-- [ ] `aiService.ts` — Groq adapter (`llama-3.3-70b-versatile` / `mixtral-8x7b-32768`)
+- [ ] `aiService.ts` — Groq adapter (`openai/gpt-oss-120b` / `qwen/qwen3.6-27b`)
 - [ ] Constrained prompt builder enforcing strict JSON schema output
 - [ ] Server-side Zod validation on ALL AI output; invalid/incomplete NOT stored (FR-AI-07)
 - [ ] Timeout (≤30s) + safe retryable error on provider failure (FR-AI-08, NFR-PERF-03)
