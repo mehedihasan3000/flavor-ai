@@ -1,6 +1,7 @@
 export { Alert, type AlertVariant } from "./alert";
 export { Badge, type BadgeVariant } from "./badge";
-export { Button, buttonStyles, type ButtonProps, type ButtonSize, type ButtonVariant } from "./button";
+export { Button, type ButtonProps } from "./button";
+export { buttonStyles, type ButtonSize, type ButtonVariant } from "./button-styles";
 export { Card } from "./card";
 export { Checkbox, type CheckboxProps } from "./checkbox";
 export { DisclaimerBanner, type DisclaimerKind } from "./disclaimer-banner";
