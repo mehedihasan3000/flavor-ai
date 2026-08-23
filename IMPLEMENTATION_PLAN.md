@@ -60,7 +60,7 @@ We will build the codebase from scratch following the SRS specifications.
 - JWT verification middleware: extracts `Authorization: Bearer <jwt>`, decodes user details, attaches `req.user`, enforces resource ownership and admin privilege checks.
 
 #### [NEW] [backend/src/services/aiService.ts](file:///c:/Users/user/Best%20Web%20Development%20v1/z%20EndGame%2013/flavor-ai/backend/src/services/aiService.ts)
-- AI service adapter interfacing with Groq API (`llama-3.3-70b-versatile` / `mixtral-8x7b-32768`).
+- AI service adapter interfacing with Groq API (`openai/gpt-oss-120b` / `qwen/qwen3.6-27b`).
 - Prompt builder enforcing strict JSON schema output.
 - Server-side Zod validation on AI output with fallback retry and safe error reporting (`FR-AI-07`, `FR-AI-08`).
 - Pantry ingredient matching calculator (`usedIngredients` vs `missingIngredients`).

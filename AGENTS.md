@@ -89,7 +89,7 @@ Issuer/audience/expiry/refresh/logout policy per SRS §9.4 (to be finalized in M
 
 ## AI Rules
 
-- Groq models `llama-3.3-70b-versatile` / `mixtral-8x7b-32768`. Constrained prompts
+- Groq models `openai/gpt-oss-120b` / `qwen/qwen3.6-27b`. Constrained prompts
   enforcing strict JSON; **server-side Zod-validate ALL AI output — invalid output
   must NOT be stored** (FR-AI-07). On provider failure/timeout return a safe,
   retryable error, never leak internals (FR-AI-08). Timeout ≤30s. Pantry matching:
