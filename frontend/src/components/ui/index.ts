@@ -12,4 +12,5 @@ export { LoadingState } from "./loading-state";
 export { Select, type SelectProps } from "./select";
 export { Skeleton } from "./skeleton";
 export { Spinner } from "./spinner";
+export { TagInput, type TagInputProps } from "./tag-input";
 export { Textarea, type TextareaProps } from "./textarea";
