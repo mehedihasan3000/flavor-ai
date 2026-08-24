@@ -86,9 +86,10 @@ integration gates (Section 6).
 - [x] Rate limiting on auth endpoints (NFR-SEC-07)
 
 ### Frontend (auth pages)
-- [ ] `(auth)/sign-in/page.tsx`, `(auth)/sign-up/page.tsx` via Better Auth
-- [ ] Protect authenticated pages/actions client-side (FR-AUTH-03)
-- [ ] Sign-in/sign-out flow verified against M1 API + JWT middleware
+- [x] `(auth)/sign-in/page.tsx`, `(auth)/sign-up/page.tsx` via Better Auth
+- [x] Protect authenticated pages/actions client-side (FR-AUTH-03)
+- [x] Sign-in/sign-out flow verified against M1 API + JWT middleware
+
 
 ---
 
@@ -242,3 +243,6 @@ integration gates (Section 6).
 - `[2026-08-17] [M3]` **M3 step 2 — paginated recipe search done.** `GET /recipes` (public): `searchRecipes` in `recipeController.ts` — `q` text search (title/summary/ingredients text index), filters `category`/`cuisine`/`diet`/`difficulty`/`maxCookingTimeMinutes`, sorts `newest`/`highest-rated`/`most-popular`, `page`/`limit` → `PaginatedResult` envelope. Query validated by `validateQuery(RecipeSearchQuery)`. +8 tests (tests/recipeSearch.test.ts) → 39/39 pass; build+lint clean.
 - `[2026-08-23] [M3]` **M3 step 3 — Groq AI service + Pantry matching + Flavor pairing done on `feature/m3-recipes-ai`.** Created `backend/src/services/aiService.ts` with Groq API integration (`openai/gpt-oss-120b`, `qwen/qwen3.6-27b`, `llama-3.3-70b-versatile`), JSON prompt builder enforcing strict output, server-side Zod validation (`AIRecipeOutputSchema`, `FlavorPairingSuggestionSchema`), configurable timeout (≤30s) + retryable `AI_PROVIDER_ERROR` (502/504), pantry matching engine (`matchPantry`), flavor pairing generator (`generateFlavorPairings`), and `AIGenerationLog` telemetry. +8 tests (`tests/aiService.test.ts`) → 47/47 pass; build ✓, lint (0 warnings) ✓.
 - `[2026-08-23] [M3]` **M3 step 4 — All remaining M3 backend tasks completed.** Implemented `imageService.ts` (ImgBB API upload + MIME/extension/size validation, NFR-SEC-08), `uploadController.ts` (`POST /upload/image`), `aiController.ts` (`POST /ai/recipes/generate`, `POST /ai/flavor-pairings`), rate limiting middleware (`aiRateLimiter`, `uploadRateLimiter`, NFR-SEC-07), and mounted routes in `v1Router`. Added 14 new tests (`tests/imageService.test.ts` & `tests/aiController.test.ts`) → **61/61 tests pass**; build ✓, lint (0 warnings) ✓.
+- `[2026-08-24] [M2]` **Workstream M2 Complete — Auth & Users (Backend + Frontend E2E).** Implemented `frontend/src/lib/auth-context.tsx` (`AuthProvider`, `useAuth`, `useRequireAuth` hook with `localStorage` token, hydration on mount via `/api/v1/auth/token/verify`, `signIn`/`signUp`/`signOut`). Server-side JWT minting in `frontend/src/lib/jwt.ts` (HS256 signed with `JWT_SECRET`, compatible with `backend/src/middleware/auth.ts` verifier). Route handlers `frontend/src/app/api/auth/sign-in/route.ts` and `sign-up/route.ts` mint tokens with demo account support. `(auth)/sign-in/page.tsx` and `(auth)/sign-up/page.tsx` built with Gravity UI icons, show/hide password toggle, and demo account 1-click buttons. Client-side route & action protection (FR-AUTH-03): created `<AuthGuard>` wrapper component for protected pages (`/profile`, `/generator`, `/favorites`), `<AuthPrompt>` banner/card component for guarding unauthenticated actions (ratings, comments, favorites, recipe creation), and `useRequireAuth` hook for interactive triggers. Added comprehensive 5-step E2E integration test suite (`tests/authFlow.test.ts`) verifying full Sign-in -> JWT Minting -> Token Verification -> Session Hydration -> Profile CRUD (`GET/PATCH /users/me`) -> Sign Out -> Expired/Tampered Token Rejection. Backend: consolidated `auth.ts`, all **46/46 M2 unit & E2E tests passing**. Frontend: Next.js 16 build ✓, lint ✓ (0 warnings). **All M2 backend and frontend roadmap items are 100% complete.**
+
+

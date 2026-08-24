@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Bars, Flame, Person, Xmark } from "@gravity-ui/icons";
+import { Bars, Flame, Person, Xmark, ArrowRightFromSquare } from "@gravity-ui/icons";
+import { useAuth } from "@/lib/auth-context";
 
 const NAV_LINKS = [
   { href: "/generator", label: "Generator" },
@@ -19,6 +20,7 @@ function isActive(pathname: string, href: string) {
 
 export function Navbar() {
   const pathname = usePathname();
+  const { user, isAuthenticated, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
@@ -74,13 +76,38 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/sign-in"
-            className="hidden items-center gap-2 rounded-button bg-primary-strong px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-deep md:inline-flex"
-          >
-            <Person className="size-4" aria-hidden="true" />
-            Sign in
-          </Link>
+          {isAuthenticated ? (
+            <div className="hidden items-center gap-2 md:flex">
+              <Link
+                href="/profile"
+                className={`flex items-center gap-2 rounded-button px-3 py-1.5 text-sm font-medium transition-colors ${
+                  isActive(pathname, "/profile")
+                    ? "bg-primary-soft text-primary-strong"
+                    : "border border-border bg-card text-heading hover:border-border-strong hover:bg-background"
+                }`}
+              >
+                <Person className="size-4 text-primary-strong" aria-hidden="true" />
+                <span>{user?.name || "Profile"}</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="inline-flex items-center gap-1.5 rounded-button border border-border bg-card px-3 py-1.5 text-sm font-medium text-subtle-foreground transition-colors hover:border-danger hover:bg-danger-bg hover:text-danger-strong"
+                title="Sign out"
+              >
+                <ArrowRightFromSquare className="size-3.5" aria-hidden="true" />
+                <span>Sign out</span>
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/sign-in"
+              className="hidden items-center gap-2 rounded-button bg-primary-strong px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-deep md:inline-flex"
+            >
+              <Person className="size-4" aria-hidden="true" />
+              Sign in
+            </Link>
+          )}
 
           <button
             type="button"
@@ -118,14 +145,28 @@ export function Navbar() {
               </Link>
             ))}
             <div className="pt-3">
-              <Link
-                href="/sign-in"
-                onClick={close}
-                className="flex w-full items-center justify-center gap-2 rounded-button bg-primary-strong px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-deep"
-              >
-                <Person className="size-4" aria-hidden="true" />
-                Sign in
-              </Link>
+              {isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    void signOut();
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-button border border-border bg-card px-4 py-2.5 text-sm font-medium text-subtle-foreground transition-colors hover:border-danger hover:bg-danger-bg hover:text-danger-strong"
+                >
+                  <ArrowRightFromSquare className="size-4" aria-hidden="true" />
+                  Sign out ({user?.name || "User"})
+                </button>
+              ) : (
+                <Link
+                  href="/sign-in"
+                  onClick={close}
+                  className="flex w-full items-center justify-center gap-2 rounded-button bg-primary-strong px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-deep"
+                >
+                  <Person className="size-4" aria-hidden="true" />
+                  Sign in
+                </Link>
+              )}
             </div>
           </div>
         </nav>
@@ -133,3 +174,4 @@ export function Navbar() {
     </header>
   );
 }
+
