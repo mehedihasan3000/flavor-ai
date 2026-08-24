@@ -5,6 +5,7 @@ import morgan from "morgan";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { baseLimiter } from "./middleware/rateLimit.js";
+import { sanitizeMongoOperators } from "./middleware/sanitizeInput.js";
 import { v1Router } from "./routes/v1.js";
 
 export function createApp(): Express {
@@ -19,6 +20,7 @@ export function createApp(): Express {
     }),
   );
   app.use(express.json({ limit: "1mb" }));
+  app.use(sanitizeMongoOperators);
 
   if (env.NODE_ENV !== "test") {
     app.use(morgan("dev"));
