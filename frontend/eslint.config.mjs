@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Ignore generated build output at any nesting depth (guards against
+    // stray nested .next dirs created by workspace-root misdetection).
+    "**/.next/**",
   ]),
 ]);
 
