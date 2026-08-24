@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/layout/navbar";
@@ -21,6 +21,10 @@ export const metadata: Metadata = {
   },
   description:
     "Generate personalized recipes from ingredients you already have with AI, then discover, rate, and share recipes with the FlavorAI community.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#FDFBF7",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

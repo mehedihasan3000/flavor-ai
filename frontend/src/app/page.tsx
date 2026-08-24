@@ -156,7 +156,7 @@ function CallToActionBand() {
         <h2 id="cta-heading" className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
           Ready to cook what you already have?
         </h2>
-        <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-white/90">
+        <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-white">
           Your next favorite meal is hiding in your kitchen.
         </p>
         <Link

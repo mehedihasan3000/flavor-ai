@@ -46,6 +46,7 @@
 
   html {
     scroll-behavior: smooth;
+    color-scheme: light;
   }
 
   body {
@@ -74,6 +75,14 @@
   ::selection {
     background-color: var(--color-primary-soft);
     color: var(--color-primary-strong);
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--color-card) inset;
+    -webkit-text-fill-color: var(--color-foreground);
+    caret-color: var(--color-foreground);
   }
 }
 
