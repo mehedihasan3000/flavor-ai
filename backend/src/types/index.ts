@@ -25,13 +25,7 @@ export const DIETARY_LABEL = [
 export const RECIPE_STATUS = ["draft", "published", "hidden"] as const;
 export const RECIPE_SOURCE = ["manual", "ai"] as const;
 export const DIFFICULTY = ["easy", "medium", "hard"] as const;
-export const MEAL_TYPE = [
-  "breakfast",
-  "lunch",
-  "dinner",
-  "snack",
-  "dessert",
-] as const;
+export const MEAL_TYPE = ["breakfast", "lunch", "dinner", "snack", "dessert"] as const;
 
 export const RECIPE_CATEGORY = [
   "main-course",
@@ -68,9 +62,7 @@ export const ERROR_CODES = [
 // Shared primitives
 // ---------------------------------------------------------------------------
 
-export const ObjectIdString = z
-  .string()
-  .regex(/^[0-9a-fA-F]{24}$/, "Invalid ObjectId");
+export const ObjectIdString = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ObjectId");
 
 export const PaginationQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -248,7 +240,11 @@ export type RecipeStep = z.infer<typeof RecipeStep>;
 
 export const CreateRecipeInput = z.object({
   title: z.string().min(3).max(120),
-  slug: z.string().min(3).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  slug: z
+    .string()
+    .min(3)
+    .max(160)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   summary: z.string().max(500).optional(),
   imageUrl: z.string().url().max(500).optional(),
   ingredients: z.array(RecipeIngredient).min(1),
@@ -333,3 +329,41 @@ export const UpdateProfileInput = z.object({
 });
 
 export type UpdateProfileInput = z.infer<typeof UpdateProfileInput>;
+
+// ---------------------------------------------------------------------------
+// Admin moderation (FR-ADMIN-01..04)
+// ---------------------------------------------------------------------------
+
+export const AdminUserSearchQuery = PaginationQuery.extend({
+  q: z.string().max(200).optional(),
+  role: z.enum(USER_ROLE).optional(),
+});
+
+export type AdminUserSearchQuery = z.infer<typeof AdminUserSearchQuery>;
+
+export const AdminRecipeSearchQuery = PaginationQuery.extend({
+  q: z.string().max(200).optional(),
+  status: z.enum(RECIPE_STATUS).optional(),
+});
+
+export type AdminRecipeSearchQuery = z.infer<typeof AdminRecipeSearchQuery>;
+
+/** Admin may only toggle published <-> hidden; draft/publish workflow stays owner-driven (M3). */
+export const AdminRecipeModerationInput = z.object({
+  status: z.enum(["published", "hidden"]),
+});
+
+export type AdminRecipeModerationInput = z.infer<typeof AdminRecipeModerationInput>;
+
+export const AdminCommentSearchQuery = PaginationQuery.extend({
+  recipeId: ObjectIdString.optional(),
+  moderationStatus: z.enum(COMMENT_STATUS).optional(),
+});
+
+export type AdminCommentSearchQuery = z.infer<typeof AdminCommentSearchQuery>;
+
+export const AdminCommentModerationInput = z.object({
+  moderationStatus: z.enum(COMMENT_STATUS),
+});
+
+export type AdminCommentModerationInput = z.infer<typeof AdminCommentModerationInput>;
