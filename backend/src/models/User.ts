@@ -6,7 +6,9 @@ const userSchema = new Schema(
     email: { type: String, required: true, trim: true, lowercase: true },
     avatarUrl: { type: String, default: null },
     bio: { type: String, maxlength: 500, default: "" },
-    providerId: { type: String, default: null },
+    // Default undefined so documents without a provider are NOT stored with the
+    // field — required for the sparse unique index (multiple nulls collide).
+    providerId: { type: String, default: undefined },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     preferences: {
       dietaryLabels: { type: [String], default: [] },

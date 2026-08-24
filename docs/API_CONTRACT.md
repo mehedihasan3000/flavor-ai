@@ -31,12 +31,27 @@ Smoke test. Returns 200 when MongoDB connected, 503 otherwise.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/auth/token/verify` | public | Exchange/verify signed JWT → user context |
-| POST | `/auth/logout` | required | Revoke current session/token |
+| POST | `/auth/token/verify` | public | Verify signed JWT → user context (lazily upserts the user) |
+| POST | `/auth/logout` | required | Revoke current session/token (stateless: client discards the token) |
 
-Contract details (issuer/audience/expiry) finalized in M2 per the auth bridge design
-(AGENTS.md, SRS §9.4). Express receives the signed JWT and verifies via
-`backend/src/middleware/auth.ts`.
+**JWT policy (finalized M2):** HS256, signed/verified with `JWT_SECRET`, issuer
+`JWT_ISSUER` (default `flavorai`), audience `JWT_AUDIENCE` (default `flavorai-api`),
+expiry `JWT_EXPIRES_IN` (default `15m`). Tokens are minted server-side (Next.js route)
+after a Better Auth session is confirmed; the secret never reaches browser JS
+(SRS §9.4). The token subject (`sub`) is the Better Auth user id, stored on the
+`User` document as `providerId`. Verification lives in `backend/src/middleware/auth.ts`.
+
+**`POST /auth/token/verify` → 200**
+```json
+{
+  "user": { "id": "507f1f77bcf86cd799439011", "name": "Ada", "email": "ada@example.com", "role": "user" }
+}
+```
+Users are matched by `providerId`; if absent, a new `User` is created (`role: "user"`,
+name defaults to `"User"` when the token carries no name). Invalid/expired token → 401.
+
+**`POST /auth/logout` → 204** — no body. Stateless JWT revocation is client-side;
+the endpoint exists for contract compliance.
 
 ---
 
