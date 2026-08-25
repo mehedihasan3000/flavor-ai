@@ -1,10 +1,16 @@
 import type {
+  AIRecipeOutput,
+  AIRecipePromptInput,
+  CreateRecipeInput,
   ErrorCode,
   ErrorEnvelope,
+  FlavorPairingInput,
+  FlavorPairingSuggestion,
   PaginatedResult,
   Recipe,
   RecipeSearchQuery,
   UpdateProfileInput,
+  UpdateRecipeInput,
   UserProfile,
 } from "./types";
 
@@ -177,3 +183,101 @@ export function listRecipes(
   const search = params.toString();
   return request<PaginatedResult<Recipe>>(`/recipes${search ? `?${search}` : ""}`, options);
 }
+
+export function generateAIRecipe(
+  input: AIRecipePromptInput,
+  options: RequestOptions = {},
+): Promise<AIRecipeOutput> {
+  return request<AIRecipeOutput>("/ai/recipes/generate", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export function suggestFlavorPairings(
+  input: FlavorPairingInput,
+  options: RequestOptions = {},
+): Promise<{ pairings: FlavorPairingSuggestion[] }> {
+  return request<{ pairings: FlavorPairingSuggestion[] }>("/ai/flavor-pairings", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getRecipe(
+  id: string,
+  options: RequestOptions = {},
+): Promise<Recipe> {
+  const res = await request<{ recipe: Recipe }>(`/recipes/${id}`, options);
+  return res.recipe;
+}
+
+export async function createRecipe(
+  input: CreateRecipeInput,
+  options: RequestOptions = {},
+): Promise<Recipe> {
+  const res = await request<{ recipe: Recipe }>("/recipes", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.recipe;
+}
+
+export async function updateRecipe(
+  id: string,
+  input: UpdateRecipeInput,
+  options: RequestOptions = {},
+): Promise<Recipe> {
+  const res = await request<{ recipe: Recipe }>(`/recipes/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+  return res.recipe;
+}
+
+export function deleteRecipe(
+  id: string,
+  options: RequestOptions = {},
+): Promise<void> {
+  return request<void>(`/recipes/${id}`, { ...options, method: "DELETE" });
+}
+
+export async function publishRecipe(
+  id: string,
+  options: RequestOptions = {},
+): Promise<Recipe> {
+  const res = await request<{ recipe: Recipe }>(`/recipes/${id}/publish`, {
+    ...options,
+    method: "POST",
+  });
+  return res.recipe;
+}
+
+export async function unpublishRecipe(
+  id: string,
+  options: RequestOptions = {},
+): Promise<Recipe> {
+  const res = await request<{ recipe: Recipe }>(`/recipes/${id}/unpublish`, {
+    ...options,
+    method: "POST",
+  });
+  return res.recipe;
+}
+
+export function uploadImage(
+  base64Data: string,
+  mimeType?: string,
+  filename?: string,
+  options: RequestOptions = {},
+): Promise<{ url: string; deleteUrl?: string }> {
+  return request<{ url: string; deleteUrl?: string }>("/upload/image", {
+    ...options,
+    method: "POST",
+    body: { image: base64Data, mimeType, filename },
+  });
+}
+
