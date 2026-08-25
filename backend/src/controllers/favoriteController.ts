@@ -25,6 +25,9 @@ type FavoritedRecipeCard = {
   difficulty: string;
   cuisine?: string | null;
   category?: string | null;
+  dietaryLabels?: string[];
+  source?: string;
+  totalTimeMinutes?: number;
   averageRating?: number;
   ratingCount?: number;
   favoriteCount?: number;
@@ -74,6 +77,11 @@ function toFavoriteFeedItem(row: FavoriteFeedRow) {
       difficulty: recipe.difficulty,
       cuisine: recipe.cuisine ?? null,
       category: recipe.category ?? null,
+      // Guaranteed by the $lookup pipeline's own status: "published" match above.
+      status: "published" as const,
+      dietaryLabels: recipe.dietaryLabels ?? [],
+      source: recipe.source ?? "manual",
+      totalTimeMinutes: recipe.totalTimeMinutes ?? 0,
       averageRating: recipe.averageRating ?? 0,
       ratingCount: recipe.ratingCount ?? 0,
       favoriteCount: recipe.favoriteCount ?? 0,
@@ -111,6 +119,9 @@ export const listFavorites = asyncHandler(async (req: Request, res: Response) =>
               difficulty: 1,
               cuisine: 1,
               category: 1,
+              dietaryLabels: 1,
+              source: 1,
+              totalTimeMinutes: 1,
               averageRating: 1,
               ratingCount: 1,
               favoriteCount: 1,
@@ -142,6 +153,20 @@ export const listFavorites = asyncHandler(async (req: Request, res: Response) =>
     total,
     totalPages: Math.ceil(total / limit),
   });
+});
+
+/**
+ * GET /favorites/:recipeId — whether the caller has favorited this recipe.
+ * Not part of the originally frozen contract; added additively (new route,
+ * existing shapes untouched) so the recipe detail page can render an
+ * accurate favorite toggle without paginating the caller's whole list.
+ */
+export const getFavoriteStatus = asyncHandler(async (req: Request, res: Response) => {
+  const user = currentUser(req);
+  const recipeId = parseIdParam(req.params.recipeId, "recipeId");
+
+  const favorite = await FavoriteModel.findOne({ recipe: recipeId, user: user.id });
+  res.status(200).json({ favorited: Boolean(favorite) });
 });
 
 /**

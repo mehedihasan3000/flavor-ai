@@ -1,14 +1,31 @@
 import type {
+  AdminComment,
+  AdminCommentSearchQuery,
+  AdminRecipe,
+  AdminRecipeSearchQuery,
+  AdminUser,
+  AdminUserSearchQuery,
   AIRecipeOutput,
   AIRecipePromptInput,
+  Comment,
+  CommentStatus,
+  CreateCommentInput,
+  CreateRatingInput,
   CreateRecipeInput,
+  DashboardStats,
   ErrorCode,
   ErrorEnvelope,
+  FavoriteItem,
+  FavoriteStatus,
   FlavorPairingInput,
   FlavorPairingSuggestion,
   PaginatedResult,
+  PaginationQuery,
+  Rating,
+  RatingSummary,
   Recipe,
   RecipeSearchQuery,
+  UpdateCommentInput,
   UpdateProfileInput,
   UpdateRecipeInput,
   UserProfile,
@@ -171,6 +188,10 @@ export function updateMyProfile(
   return request<UserProfile>("/users/me", { ...options, method: "PATCH", body: input });
 }
 
+export function getMyStats(options: RequestOptions = {}): Promise<DashboardStats> {
+  return request<DashboardStats>("/users/me/stats", options);
+}
+
 export function listRecipes(
   query: RecipeSearchQuery = {},
   options: RequestOptions = {},
@@ -279,5 +300,198 @@ export function uploadImage(
     method: "POST",
     body: { image: base64Data, mimeType, filename },
   });
+}
+
+// ─── Ratings (FR-RATE-01..05) ───────────────────────────────────────────────
+
+/** Public summary; includes `myRating` when `options.token` is a valid session. */
+export function getRatingSummary(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<RatingSummary> {
+  return request<RatingSummary>(`/recipes/${recipeId}/ratings`, options);
+}
+
+export function rateRecipe(
+  recipeId: string,
+  input: CreateRatingInput,
+  options: RequestOptions = {},
+): Promise<{ rating: Rating; summary: RatingSummary }> {
+  return request<{ rating: Rating; summary: RatingSummary }>(`/recipes/${recipeId}/ratings`, {
+    ...options,
+    method: "PUT",
+    body: input,
+  });
+}
+
+export function deleteRating(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/recipes/${recipeId}/ratings`, {
+    ...options,
+    method: "DELETE",
+  });
+}
+
+// ─── Favorites (FR-FAV-01..04) ──────────────────────────────────────────────
+
+export function getFavoriteStatus(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<FavoriteStatus> {
+  return request<FavoriteStatus>(`/favorites/${recipeId}`, options);
+}
+
+export function addFavorite(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<{ favorite: { id: string; recipe: string; user: string; createdAt: string }; favoriteCount: number }> {
+  return request(`/favorites/${recipeId}`, { ...options, method: "PUT" });
+}
+
+export function removeFavorite(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<{ success: true; favoriteCount: number }> {
+  return request(`/favorites/${recipeId}`, { ...options, method: "DELETE" });
+}
+
+export function listFavorites(
+  query: PaginationQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<FavoriteItem>> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    params.set(key, String(value));
+  }
+  const search = params.toString();
+  return request<PaginatedResult<FavoriteItem>>(`/favorites${search ? `?${search}` : ""}`, options);
+}
+
+// ─── Comments (FR-COMMENT-01..05) ───────────────────────────────────────────
+
+export function listComments(
+  recipeId: string,
+  query: PaginationQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<Comment>> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    params.set(key, String(value));
+  }
+  const search = params.toString();
+  return request<PaginatedResult<Comment>>(
+    `/recipes/${recipeId}/comments${search ? `?${search}` : ""}`,
+    options,
+  );
+}
+
+export async function createComment(
+  recipeId: string,
+  input: CreateCommentInput,
+  options: RequestOptions = {},
+): Promise<Comment> {
+  const res = await request<{ comment: Comment }>(`/recipes/${recipeId}/comments`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.comment;
+}
+
+export async function updateComment(
+  commentId: string,
+  input: UpdateCommentInput,
+  options: RequestOptions = {},
+): Promise<Comment> {
+  const res = await request<{ comment: Comment }>(`/comments/${commentId}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+  return res.comment;
+}
+
+export function deleteComment(
+  commentId: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/comments/${commentId}`, { ...options, method: "DELETE" });
+}
+
+// ─── Admin (FR-ADMIN-01..04) ────────────────────────────────────────────────
+
+function toQueryString(query: object): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
+    if (value === undefined || value === "") continue;
+    params.set(key, String(value));
+  }
+  const search = params.toString();
+  return search ? `?${search}` : "";
+}
+
+export function adminListUsers(
+  query: AdminUserSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<AdminUser>> {
+  return request<PaginatedResult<AdminUser>>(`/admin/users${toQueryString(query)}`, options);
+}
+
+export function adminListRecipes(
+  query: AdminRecipeSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<AdminRecipe>> {
+  return request<PaginatedResult<AdminRecipe>>(`/admin/recipes${toQueryString(query)}`, options);
+}
+
+export async function adminModerateRecipe(
+  id: string,
+  status: "published" | "hidden",
+  options: RequestOptions = {},
+): Promise<AdminRecipe> {
+  const res = await request<{ recipe: AdminRecipe }>(`/admin/recipes/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: { status },
+  });
+  return res.recipe;
+}
+
+export function adminDeleteRecipe(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/admin/recipes/${id}`, { ...options, method: "DELETE" });
+}
+
+export function adminListComments(
+  query: AdminCommentSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<AdminComment>> {
+  return request<PaginatedResult<AdminComment>>(`/admin/comments${toQueryString(query)}`, options);
+}
+
+export async function adminModerateComment(
+  id: string,
+  moderationStatus: CommentStatus,
+  options: RequestOptions = {},
+): Promise<AdminComment> {
+  const res = await request<{ comment: AdminComment }>(`/admin/comments/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: { moderationStatus },
+  });
+  return res.comment;
+}
+
+export function adminDeleteComment(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/admin/comments/${id}`, { ...options, method: "DELETE" });
 }
 

@@ -37,6 +37,18 @@ vi.mock("../src/middleware/auth.js", () => ({
     req.user = { id: USER_ID, email: "ada@example.com", name: "Ada", role: "admin" };
     next();
   },
+  // Mirrors the real optionalAuth: only hydrates req.user when a bearer
+  // token is actually sent, so guest-path tests stay unauthenticated.
+  optionalAuth: (
+    req: { headers: Record<string, unknown>; user?: unknown },
+    _res: unknown,
+    next: () => void,
+  ) => {
+    if (req.headers.authorization) {
+      req.user = { id: USER_ID, email: "ada@example.com", name: "Ada", role: "user" };
+    }
+    next();
+  },
 }));
 
 type MockRecipe = {
@@ -113,6 +125,28 @@ describe("ratings (FR-RATE-01..05)", () => {
       const res = await request(app).get("/recipes/not-an-id/ratings");
       expect(res.status).toBe(400);
       expect(res.body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("omits myRating entirely for an unauthenticated request", async () => {
+      const res = await request(app).get(ratingUrl);
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty("myRating");
+    });
+
+    it("includes myRating: null for an authenticated caller who hasn't rated yet", async () => {
+      ratingFindOne.mockResolvedValue(null as never);
+      const res = await request(app).get(ratingUrl).set("Authorization", "Bearer faketoken");
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ averageRating: 0, ratingCount: 0, myRating: null });
+      expect(ratingFindOne).toHaveBeenCalledWith({ recipe: RECIPE_ID, user: USER_ID });
+    });
+
+    it("includes the authenticated caller's own rating value when one exists", async () => {
+      mockRecipeFindById(publishedRecipe({ averageRating: 4.5, ratingCount: 2 }));
+      ratingFindOne.mockResolvedValue({ value: 4 } as never);
+      const res = await request(app).get(ratingUrl).set("Authorization", "Bearer faketoken");
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ averageRating: 4.5, ratingCount: 2, myRating: 4 });
     });
   });
 

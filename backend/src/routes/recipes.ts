@@ -6,7 +6,12 @@ import { CreateRecipeInput, RecipeSearchQuery, UpdateRecipeInput } from "../type
 
 export const recipesRouter = Router();
 
-recipesRouter.get("/", validateQuery(RecipeSearchQuery), recipeController.searchRecipes);
+recipesRouter.get(
+  "/",
+  optionalAuth,
+  validateQuery(RecipeSearchQuery),
+  recipeController.searchRecipes,
+);
 recipesRouter.get("/:id", optionalAuth, recipeController.getRecipe);
 recipesRouter.post(
   "/",

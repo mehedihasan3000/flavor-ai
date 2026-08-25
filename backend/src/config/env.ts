@@ -14,7 +14,7 @@ const EnvSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("15m"),
   GROQ_API_KEY: z.string().optional(),
   GROQ_MODEL: z
-    .enum(["openai/gpt-oss-120b", "qwen/qwen3.6-27b"])
+    .enum(["openai/gpt-oss-120b", "qwen/qwen3.6-27b", "llama-3.3-70b-versatile"])
     .default("openai/gpt-oss-120b"),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   IMGBB_API_KEY: z.string().optional(),

@@ -2,6 +2,7 @@ import request from "supertest";
 import jwt from "jsonwebtoken";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { env } from "../src/config/env.js";
+import { RecipeModel } from "../src/models/Recipe.js";
 import { UserModel } from "../src/models/User.js";
 import { createApp } from "../src/server.js";
 
@@ -10,6 +11,12 @@ vi.mock("../src/models/User.js", () => ({
     findOne: vi.fn(),
     findById: vi.fn(),
     findByIdAndUpdate: vi.fn(),
+  },
+}));
+
+vi.mock("../src/models/Recipe.js", () => ({
+  RecipeModel: {
+    aggregate: vi.fn(),
   },
 }));
 
@@ -290,5 +297,85 @@ describe("PATCH /api/v1/users/me", () => {
       },
       { new: true, runValidators: true },
     );
+  });
+});
+
+describe("GET /api/v1/users/me/stats (additive)", () => {
+  const findOneMock = vi.mocked(UserModel.findOne);
+  const aggregateMock = vi.mocked(RecipeModel.aggregate);
+
+  beforeEach(() => {
+    findOneMock.mockReset();
+    aggregateMock.mockReset();
+  });
+
+  function authenticateAs(id: string) {
+    findOneMock.mockReturnValue({
+      lean: () => ({
+        exec: async () => ({ _id: id, email: "ada@example.com", name: "Ada", role: "user" }),
+      }),
+    } as never);
+  }
+
+  it("rejects unauthenticated requests with 401", async () => {
+    const res = await request(app).get("/api/v1/users/me/stats");
+    expect(res.status).toBe(401);
+    expect(res.body).toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("returns aggregate stats for the authenticated user's own recipes", async () => {
+    const token = signToken({ sub: "ba-123", email: "ada@example.com" });
+    authenticateAs("507f1f77bcf86cd799439011");
+    aggregateMock.mockResolvedValue([
+      {
+        _id: null,
+        totalRecipes: 4,
+        draftCount: 1,
+        publishedCount: 3,
+        hiddenCount: 0,
+        totalRatingsReceived: 10,
+        totalFavoritesReceived: 6,
+        totalCommentsReceived: 2,
+        weightedRatingSum: 43,
+      },
+    ] as never);
+
+    const res = await request(app)
+      .get("/api/v1/users/me/stats")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      totalRecipes: 4,
+      draftCount: 1,
+      publishedCount: 3,
+      hiddenCount: 0,
+      totalRatingsReceived: 10,
+      totalFavoritesReceived: 6,
+      totalCommentsReceived: 2,
+      averageRating: 4.3,
+    });
+  });
+
+  it("returns all-zero stats (and averageRating 0) for a user with no recipes", async () => {
+    const token = signToken({ sub: "ba-123", email: "ada@example.com" });
+    authenticateAs("507f1f77bcf86cd799439011");
+    aggregateMock.mockResolvedValue([] as never);
+
+    const res = await request(app)
+      .get("/api/v1/users/me/stats")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      totalRecipes: 0,
+      draftCount: 0,
+      publishedCount: 0,
+      hiddenCount: 0,
+      totalRatingsReceived: 0,
+      totalFavoritesReceived: 0,
+      totalCommentsReceived: 0,
+      averageRating: 0,
+    });
   });
 });

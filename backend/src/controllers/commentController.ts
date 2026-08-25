@@ -53,11 +53,24 @@ export async function recomputeCommentCount(recipeId: string): Promise<number> {
   return commentCount;
 }
 
-function toCommentResponse(record: CommentRecord, recipeId: string) {
+export interface CommentAuthor {
+  name?: string | null;
+  avatarUrl?: string | null;
+}
+
+/**
+ * `authorName`/`authorAvatarUrl` are additive fields (the frozen contract
+ * only specified `user` as the raw author id) so the comment section can
+ * show a real name instead of a bare ObjectId. `user` is always the id
+ * string regardless of whether `record.user` was populated by the caller.
+ */
+function toCommentResponse(record: CommentRecord, recipeId: string, author?: CommentAuthor | null) {
   return {
     id: String(record._id),
     recipe: recipeId,
     user: String(record.user),
+    authorName: author?.name ?? null,
+    authorAvatarUrl: author?.avatarUrl ?? null,
     body: record.body,
     moderationStatus: record.moderationStatus,
     createdAt: (record.createdAt ?? new Date()).toISOString(),
@@ -77,12 +90,25 @@ export const listComments = asyncHandler(async (req: Request, res: Response) => 
       .sort({ createdAt: 1 })
       .skip((page - 1) * limit)
       .limit(limit)
+      .populate("user", "name avatarUrl")
       .lean(),
     CommentModel.countDocuments(filter),
   ]);
 
+  type PopulatedUser = { _id: unknown; name?: string; avatarUrl?: string | null };
+  function isPopulatedUser(value: unknown): value is PopulatedUser {
+    return typeof value === "object" && value !== null && "_id" in value;
+  }
+
   res.json({
-    items: (docs as unknown as CommentRecord[]).map((doc) => toCommentResponse(doc, recipeId)),
+    items: (docs as unknown as CommentRecord[]).map((doc) => {
+      const populated = isPopulatedUser(doc.user) ? doc.user : null;
+      return toCommentResponse(
+        { ...doc, user: populated ? populated._id : doc.user },
+        recipeId,
+        populated ? { name: populated.name, avatarUrl: populated.avatarUrl } : null,
+      );
+    }),
     page,
     limit,
     total,
@@ -105,7 +131,9 @@ export const createComment = asyncHandler(async (req: Request, res: Response) =>
 
   await recomputeCommentCount(recipeId);
 
-  res.status(201).json({ comment: toCommentResponse(record, recipeId) });
+  res
+    .status(201)
+    .json({ comment: toCommentResponse(record, recipeId, { name: user.name, avatarUrl: null }) });
 });
 
 /** PATCH /comments/:id — edit own comment (FR-COMMENT-02). */
@@ -127,7 +155,9 @@ export const updateComment = asyncHandler(async (req: Request, res: Response) =>
     await record.save();
   }
 
-  res.status(200).json({ comment: toCommentResponse(record, String(record.recipe)) });
+  res.status(200).json({
+    comment: toCommentResponse(record, String(record.recipe), { name: user.name, avatarUrl: null }),
+  });
 });
 
 /** DELETE /comments/:id — author or admin deletes a comment (FR-COMMENT-02/03). */
