@@ -9,7 +9,7 @@ import type { USER_ROLE } from "./index.js";
 export type AuthUser = {
   id: string;
   email: string;
-  name: string;
+  name?: string;
   role: (typeof USER_ROLE)[number];
 };
 

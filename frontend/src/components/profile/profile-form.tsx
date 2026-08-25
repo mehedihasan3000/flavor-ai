@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Person } from "@gravity-ui/icons";
+import { useAuth } from "@/lib/auth-context";
 import { ApiError, getMyProfile, updateMyProfile } from "@/lib/api";
 import type {
   Difficulty,
@@ -100,30 +101,35 @@ function validate(form: FormState): FieldErrors {
     if (avatar.length > 500) errors.avatarUrl = "Avatar URL must be at most 500 characters.";
     else {
       try {
-        new URL(avatar);
+        const url = new URL(avatar);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          errors.avatarUrl = "Avatar URL must use http or https.";
+        }
       } catch {
-        errors.avatarUrl = "Enter a valid URL, including https://.";
+        errors.avatarUrl = "Please enter a valid URL.";
       }
     }
   }
 
-  if (form.bio.length > 500) errors.bio = "Bio must be at most 500 characters.";
+  const bio = form.bio.trim();
+  if (bio.length > 500) errors.bio = "Bio must be at most 500 characters.";
 
-  for (const [field, labelText] of [
-    ["calorieTarget", "Daily calorie target"],
-    ["proteinTargetGrams", "Protein target"],
-    ["cookingTimeMaxMinutes", "Maximum cooking time"],
-  ] as const) {
-    const parsed = optionalPositiveInt(form[field]);
-    if (parsed === "invalid") {
-      errors[field] = `${labelText} must be a positive whole number.`;
-    }
-  }
+  const calorie = optionalPositiveInt(form.calorieTarget);
+  if (calorie === "invalid") errors.calorieTarget = "Calorie target must be a positive number.";
+
+  const protein = optionalPositiveInt(form.proteinTargetGrams);
+  if (protein === "invalid") errors.proteinTargetGrams = "Protein target must be a positive number.";
+
+  const cooking = optionalPositiveInt(form.cookingTimeMaxMinutes);
+  if (cooking === "invalid") errors.cookingTimeMaxMinutes = "Cooking time must be a positive number.";
 
   return errors;
 }
 
-export function ProfileForm({ token }: { token?: string }) {
+export function ProfileForm({ token: explicitToken }: { token?: string }) {
+  const { token: authContextToken, isLoading: isAuthLoading } = useAuth();
+  const token = explicitToken ?? authContextToken;
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -138,7 +144,15 @@ export function ProfileForm({ token }: { token?: string }) {
 
   const loadProfile = useCallback(
     (signal?: AbortSignal) => {
+      if (!token) {
+        return Promise.resolve().then(() => {
+          setLoadErrorCode("UNAUTHORIZED");
+          setLoadStatus("error");
+        });
+      }
+
       return getMyProfile({ signal, token })
+
         .then((data) => {
           setProfile(data);
           setForm(profileToForm(data));
@@ -161,10 +175,11 @@ export function ProfileForm({ token }: { token?: string }) {
   );
 
   useEffect(() => {
+    if (isAuthLoading) return;
     const controller = new AbortController();
     void loadProfile(controller.signal);
     return () => controller.abort();
-  }, [loadProfile]);
+  }, [loadProfile, isAuthLoading]);
 
   const retryLoad = () => {
     setLoadStatus("loading");

@@ -32,7 +32,7 @@ authRouter.post("/token/verify", async (req, res, next) => {
           providerId: claims.sub,
           email: claims.email,
           name: claims.name ?? "User",
-          role: "user",
+          role: claims.role ?? "user",
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
