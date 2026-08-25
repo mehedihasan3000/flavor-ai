@@ -85,7 +85,8 @@ function mockRecipeFindById(doc: MockRecipe | null): void {
 
 function mockCommentFind(docs: MockComment[]): void {
   const lean = vi.fn().mockResolvedValue(docs as never);
-  const limit = vi.fn().mockReturnValue({ lean });
+  const populate = vi.fn().mockReturnValue({ lean });
+  const limit = vi.fn().mockReturnValue({ populate });
   const skip = vi.fn().mockReturnValue({ limit });
   const sort = vi.fn().mockReturnValue({ skip });
   find.mockReturnValue({ sort } as never);
@@ -139,6 +140,38 @@ describe("comments (FR-COMMENT-01..05)", () => {
       expect(res.body).toMatchObject({ page: 1, limit: 20, total: 1, totalPages: 1 });
     });
 
+    it("includes the populated author's name and avatar (additive fields)", async () => {
+      const comment = makeComment({
+        user: { _id: USER_ID, name: "Ada", avatarUrl: "https://example.com/a.png" },
+      } as unknown as Partial<MockComment>);
+      mockCommentFind([comment]);
+      countDocuments.mockResolvedValue(1);
+
+      const res = await request(app).get(listUrl);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items[0]).toMatchObject({
+        user: USER_ID,
+        authorName: "Ada",
+        authorAvatarUrl: "https://example.com/a.png",
+      });
+    });
+
+    it("falls back to null author fields when the user reference didn't populate", async () => {
+      const comment = makeComment();
+      mockCommentFind([comment]);
+      countDocuments.mockResolvedValue(1);
+
+      const res = await request(app).get(listUrl);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items[0]).toMatchObject({
+        user: USER_ID,
+        authorName: null,
+        authorAvatarUrl: null,
+      });
+    });
+
     it("returns 404 for a draft recipe", async () => {
       mockRecipeFindById(publishedRecipe({ status: "draft" }));
       const res = await request(app).get(listUrl);
@@ -170,7 +203,11 @@ describe("comments (FR-COMMENT-01..05)", () => {
         { _id: RECIPE_ID },
         { $set: { commentCount: 0 } },
       );
-      expect(res.body.comment).toMatchObject({ recipe: RECIPE_ID, user: USER_ID });
+      expect(res.body.comment).toMatchObject({
+        recipe: RECIPE_ID,
+        user: USER_ID,
+        authorName: "Ada",
+      });
     });
 
     it("strips HTML/script tags before storing (NFR-SEC-06)", async () => {

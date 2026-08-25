@@ -9,6 +9,7 @@ export { EmptyState } from "./empty-state";
 export { ErrorState } from "./error-state";
 export { Input, type InputProps } from "./input";
 export { LoadingState } from "./loading-state";
+export { Pagination, type PaginationProps } from "./pagination";
 export { Select, type SelectProps } from "./select";
 export { Skeleton } from "./skeleton";
 export { Spinner } from "./spinner";

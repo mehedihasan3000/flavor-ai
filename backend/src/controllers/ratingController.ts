@@ -57,11 +57,31 @@ function toRatingResponse(record: RatingRecord, recipeId: string, userId: string
   };
 }
 
-/** GET /recipes/:id/ratings — public summary (FR-RATE-04). */
+/**
+ * GET /recipes/:id/ratings — public summary (FR-RATE-04). Runs behind
+ * `optionalAuth`: when a valid token is present, `myRating` reports the
+ * caller's own rating (or `null` if they haven't rated yet) so the frontend
+ * can pre-select the interactive stars; the key is omitted entirely for
+ * guests to keep the response backward-compatible with the frozen contract.
+ */
 export const getRatingSummary = asyncHandler(async (req: Request, res: Response) => {
   const recipeId = parseIdParam(req.params.id, "id");
   const recipe = await requirePublishedRecipe(recipeId);
-  res.json({ averageRating: recipe.averageRating ?? 0, ratingCount: recipe.ratingCount ?? 0 });
+
+  const response: { averageRating: number; ratingCount: number; myRating?: number | null } = {
+    averageRating: recipe.averageRating ?? 0,
+    ratingCount: recipe.ratingCount ?? 0,
+  };
+
+  if (req.user) {
+    const existing = (await RatingModel.findOne({
+      recipe: recipeId,
+      user: req.user.id,
+    })) as RatingRecord | null;
+    response.myRating = existing ? existing.value : null;
+  }
+
+  res.json(response);
 });
 
 /** PUT /recipes/:id/ratings — create/update own rating, idempotent (FR-RATE-01..03/05). */

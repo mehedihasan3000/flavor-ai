@@ -277,6 +277,10 @@ export const RecipeSearchQuery = PaginationQuery.extend({
   difficulty: z.enum(DIFFICULTY).optional(),
   maxCookingTimeMinutes: z.coerce.number().int().positive().optional(),
   sort: z.enum(["newest", "highest-rated", "most-popular"]).default("newest"),
+  /** Additive: scopes results to the caller's own recipes across all statuses (auth required). */
+  mine: z.coerce.boolean().optional(),
+  /** Additive: only honored alongside `mine=true` (see searchRecipes). */
+  status: z.enum(RECIPE_STATUS).optional(),
 });
 
 export type RecipeSearchQuery = z.infer<typeof RecipeSearchQuery>;
@@ -298,6 +302,8 @@ export const UpdateRatingInput = z.object({
 export const RatingSummary = z.object({
   averageRating: z.number().min(0).max(5),
   ratingCount: z.number().int().nonnegative(),
+  /** The authenticated caller's own rating, when present; omitted for guests. */
+  myRating: RatingValue.nullable().optional(),
 });
 
 export type CreateRatingInput = z.infer<typeof CreateRatingInput>;

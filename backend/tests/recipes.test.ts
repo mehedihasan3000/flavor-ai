@@ -24,8 +24,11 @@ async function createUser(
   email: string,
   role: "user" | "admin" = "user",
 ): Promise<{ id: string; token: string }> {
-  const user = await UserModel.create({ name, email, role });
-  return { id: user._id.toString(), token: signToken(user._id.toString(), role) };
+  // authenticate() looks users up by providerId (the external auth subject),
+  // not Mongo _id — must be set for a real request to pass requireAuth.
+  const providerId = new mongoose.Types.ObjectId().toString();
+  const user = await UserModel.create({ name, email, role, providerId });
+  return { id: user._id.toString(), token: signToken(providerId, role) };
 }
 
 const validRecipeBody = {

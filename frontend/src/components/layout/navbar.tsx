@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 const NAV_LINKS = [
   { href: "/generator", label: "Generator" },
   { href: "/recipes", label: "Recipes" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/favorites", label: "Favorites" },
 ] as const;
 
@@ -78,6 +79,18 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           {isAuthenticated ? (
             <div className="hidden items-center gap-2 md:flex">
+              {user?.role === "admin" && (
+                <Link
+                  href="/admin"
+                  className={`rounded-button px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isActive(pathname, "/admin")
+                      ? "bg-primary-soft text-primary-strong"
+                      : "border border-border bg-card text-heading hover:border-border-strong hover:bg-background"
+                  }`}
+                >
+                  Admin
+                </Link>
+              )}
               <Link
                 href="/profile"
                 className={`flex items-center gap-2 rounded-button px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -133,7 +146,11 @@ export function Navbar() {
           className="border-t border-border bg-card/95 backdrop-blur-md md:hidden"
         >
           <div className="mx-auto max-w-6xl space-y-1 px-4 py-4 sm:px-6">
-            {[...NAV_LINKS, ...MOBILE_EXTRA_LINKS].map((link) => (
+            {[
+              ...NAV_LINKS,
+              ...MOBILE_EXTRA_LINKS,
+              ...(user?.role === "admin" ? [{ href: "/admin", label: "Admin" }] : []),
+            ].map((link) => (
               <Link
                 key={link.href}
                 href={link.href}

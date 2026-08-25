@@ -61,6 +61,7 @@ the endpoint exists for contract compliance.
 |--------|------|------|-------------|
 | GET | `/users/me` | required | Own profile + dietary preferences (FR-AUTH-06) |
 | PATCH | `/users/me` | required | Update name, avatar, bio, preferences (FR-AUTH-06) |
+| GET | `/users/me/stats` | required | Own recipe counts + ratings/favorites/comments received |
 
 **`GET /users/me` → 200**
 ```json
@@ -92,6 +93,23 @@ the endpoint exists for contract compliance.
 ```
 → 200 with updated profile. 400 on invalid shape.
 
+**Additive (post-freeze): `GET /users/me/stats` → 200**
+```json
+{
+  "totalRecipes": 12,
+  "draftCount": 2,
+  "publishedCount": 9,
+  "hiddenCount": 1,
+  "totalRatingsReceived": 34,
+  "totalFavoritesReceived": 21,
+  "totalCommentsReceived": 8,
+  "averageRating": 4.3
+}
+```
+Not in the originally frozen contract — added for the frontend dashboard's stat
+cards. `averageRating` is the rating-weighted mean across every recipe the
+caller owns (0 when nothing has been rated yet).
+
 ---
 
 ## `/recipes` — CRUD, publishing, search (M3)
@@ -111,6 +129,15 @@ the endpoint exists for contract compliance.
 **`GET /recipes` query params** (`RecipeSearchQuery`):
 `page`, `limit`, `q`, `category`, `cuisine`, `diet`, `difficulty`, `maxCookingTimeMinutes`,
 `sort=newest|highest-rated|most-popular`
+
+**Additive (post-freeze):** `mine=true` (requires auth — the route runs behind
+`optionalAuth`) switches the base filter from `status: "published"` to the
+caller's own `owner`, across every status, sorted by `createdAt` desc instead
+of `sort`; `status=draft|published|hidden` is only honored alongside
+`mine=true` (ignored otherwise, so public discovery can never leak drafts —
+Business Rules 3/4/10). `mine=true` without a valid token → 401. Added for the
+frontend dashboard ("my drafts/published/hidden"), for which the frozen
+contract had no endpoint.
 
 **`POST /recipes` body** (`CreateRecipeInput`):
 ```json
@@ -196,10 +223,16 @@ the endpoint exists for contract compliance.
 |--------|------|------|-------------|
 | PUT | `/recipes/:id/ratings` | required | Create or update own rating (idempotent, FR-RATE-02/03) |
 | DELETE | `/recipes/:id/ratings` | required | Remove own rating (FR-RATE-03) |
-| GET | `/recipes/:id/ratings` | public | Summary `{ averageRating, ratingCount }` |
+| GET | `/recipes/:id/ratings` | optional | Summary `{ averageRating, ratingCount, myRating? }` |
 
 Body: `{ "value": 5 }` (integer 1–5). Owner rating own recipe → 403 (FR-RATE-05).
 Response on PUT → 200 `{ rating: { id, recipe, user, value, createdAt, updatedAt }, summary }`.
+
+**Additive (post-freeze):** GET runs behind `optionalAuth` — with a valid Bearer
+token, the summary includes `myRating: number | null` (the caller's own rating,
+or `null` if they haven't rated yet) so the UI can pre-select the interactive
+stars. The key is omitted entirely for guests/unauthenticated requests, so
+existing consumers reading only `{ averageRating, ratingCount }` are unaffected.
 
 ---
 
@@ -216,6 +249,13 @@ Body: `{ "body": "text (1–2000 chars, sanitized)" }` (`CreateCommentInput`).
 Comment response: `{ id, recipe, user, body, moderationStatus, createdAt, updatedAt }`.
 Moderated comments hidden from public list.
 
+**Additive (post-freeze):** every comment response also includes
+`authorName: string | null` and `authorAvatarUrl: string | null` — `user`
+remains the raw author id unchanged. `GET` (list) populates these from the
+`User` document; `POST`/`PATCH` fill `authorName` from the authenticated
+caller's own name (no extra lookup) and leave `authorAvatarUrl: null`, refreshed
+on the next list fetch.
+
 ---
 
 ## `/favorites` — favorites (M4)
@@ -223,10 +263,20 @@ Moderated comments hidden from public list.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/favorites` | required | Own favorites, paginated (FR-FAV-03) |
+| GET | `/favorites/:recipeId` | required | Own favorite status for one recipe |
 | PUT | `/favorites/:recipeId` | required | Add favorite (idempotent, unique per user) |
 | DELETE | `/favorites/:recipeId` | required | Remove favorite |
 
 Unpublished/deleted recipes are filtered out of favorites lists (FR-FAV-04).
+
+**Additive (post-freeze):** `GET /favorites/:recipeId` → 200
+`{ favorited: boolean }`. Not in the originally frozen contract — added so a
+recipe detail page can render an accurate favorite toggle without paginating
+the caller's whole favorites list. The `recipe` card projection returned by
+`GET /favorites` also now includes `dietaryLabels`, `source`, `status`
+(always `"published"` here), and `totalTimeMinutes` (defaulting to
+`[]`/`"manual"`/`0` if absent) so the favorites page can render the same
+`RecipeCard` used on `/recipes`.
 
 ---
 

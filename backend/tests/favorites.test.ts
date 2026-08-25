@@ -179,6 +179,35 @@ describe("favorites (FR-FAV-01..04)", () => {
     });
   });
 
+  describe("GET /favorites/:recipeId (authenticated status check)", () => {
+    it("reports favorited: true when a favorite row exists", async () => {
+      findOne.mockResolvedValue({
+        _id: "507f1f77bcf86cd799439055",
+        recipe: RECIPE_ID,
+        user: USER_ID,
+      } as never);
+
+      const res = await request(app).get(`/favorites/${RECIPE_ID}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ favorited: true });
+      expect(findOne).toHaveBeenCalledWith({ recipe: RECIPE_ID, user: USER_ID });
+    });
+
+    it("reports favorited: false when no favorite row exists", async () => {
+      findOne.mockResolvedValue(null as never);
+      const res = await request(app).get(`/favorites/${OTHER_RECIPE_ID}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ favorited: false });
+    });
+
+    it("returns 400 for a malformed recipe id", async () => {
+      const res = await request(app).get("/favorites/not-an-id");
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION_ERROR");
+    });
+  });
+
   describe("GET /favorites (private, paginated)", () => {
     it("returns the caller's favorited published recipes", async () => {
       aggregate.mockResolvedValue([
@@ -196,6 +225,9 @@ describe("favorites (FR-FAV-01..04)", () => {
                 difficulty: "easy",
                 cuisine: "mediterranean",
                 category: "main-course",
+                dietaryLabels: ["gluten-free", "high-protein"],
+                source: "ai",
+                totalTimeMinutes: 35,
                 averageRating: 4.5,
                 ratingCount: 2,
                 favoriteCount: 1,
@@ -216,8 +248,41 @@ describe("favorites (FR-FAV-01..04)", () => {
         id: RECIPE_ID,
         title: "Garlic Spinach Chicken",
         slug: "garlic-spinach-chicken",
+        status: "published",
+        dietaryLabels: ["gluten-free", "high-protein"],
+        source: "ai",
+        totalTimeMinutes: 35,
       });
       expect(res.body).toMatchObject({ page: 1, limit: 20, total: 1, totalPages: 1 });
+    });
+
+    it("defaults dietaryLabels/source/totalTimeMinutes when the recipe doc omits them", async () => {
+      aggregate.mockResolvedValue([
+        {
+          items: [
+            {
+              _id: "507f1f77bcf86cd799439055",
+              createdAt: new Date("2026-01-02T00:00:00.000Z"),
+              recipe: {
+                _id: RECIPE_ID,
+                title: "Garlic Spinach Chicken",
+                slug: "garlic-spinach-chicken",
+                difficulty: "easy",
+              },
+            },
+          ],
+          totalCount: [{ count: 1 }],
+        },
+      ] as never);
+
+      const res = await request(app).get("/favorites");
+
+      expect(res.status).toBe(200);
+      expect(res.body.items[0].recipe).toMatchObject({
+        dietaryLabels: [],
+        source: "manual",
+        totalTimeMinutes: 0,
+      });
     });
 
     it("returns an empty page when nothing is favorited or all favorites were filtered out", async () => {

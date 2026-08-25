@@ -4,11 +4,13 @@ import {
   removeRating,
   upsertRating,
 } from "../controllers/ratingController.js";
-import { requireAuth } from "../middleware/auth.js";
+import { optionalAuth, requireAuth } from "../middleware/auth.js";
 
 // mergeParams exposes the parent's `:id` from /recipes/:id/ratings.
 export const ratingsRouter = Router({ mergeParams: true });
 
-ratingsRouter.get("/", getRatingSummary);
+// optionalAuth: still public, but hydrates req.user when a valid token is
+// sent so the summary can include the caller's own rating (myRating).
+ratingsRouter.get("/", optionalAuth, getRatingSummary);
 ratingsRouter.put("/", requireAuth, upsertRating);
 ratingsRouter.delete("/", requireAuth, removeRating);
