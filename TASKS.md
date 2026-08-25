@@ -112,10 +112,10 @@ integration gates (Section 6).
 - [x] Rate limiting on AI + upload endpoints (NFR-SEC-07)
 
 ### Frontend
-- [ ] `generator/page.tsx` — ingredient tags, dietary checkboxes, time/difficulty, progress, regenerate
-- [ ] `recipes/create/page.tsx`, `recipes/[id]/edit/page.tsx` — manual recipe editor
-- [ ] `recipes/[id]/page.tsx` — detail: ingredients, steps, nutrition badge, allergy disclaimer
-- [ ] Components: `IngredientTagInput`, `NutritionBadge`, `DisclaimerBanner`
+- [x] `generator/page.tsx` — ingredient tags, dietary checkboxes, time/difficulty, progress, regenerate
+- [x] `recipes/create/page.tsx`, `recipes/[id]/edit/page.tsx` — manual recipe editor
+- [x] `recipes/[id]/page.tsx` — detail: ingredients, steps, nutrition badge, allergy disclaimer
+- [x] Components: `IngredientTagInput`, `NutritionBadge`, `DisclaimerBanner`
 
 ---
 
@@ -246,3 +246,6 @@ integration gates (Section 6).
 - `[2026-08-24] [M2]` **Workstream M2 Complete — Auth & Users (Backend + Frontend E2E).** Implemented `frontend/src/lib/auth-context.tsx` (`AuthProvider`, `useAuth`, `useRequireAuth` hook with `localStorage` token, hydration on mount via `/api/v1/auth/token/verify`, `signIn`/`signUp`/`signOut`). Server-side JWT minting in `frontend/src/lib/jwt.ts` (HS256 signed with `JWT_SECRET`, compatible with `backend/src/middleware/auth.ts` verifier). Route handlers `frontend/src/app/api/auth/sign-in/route.ts` and `sign-up/route.ts` mint tokens with demo account support. `(auth)/sign-in/page.tsx` and `(auth)/sign-up/page.tsx` built with Gravity UI icons, show/hide password toggle, and demo account 1-click buttons. Client-side route & action protection (FR-AUTH-03): created `<AuthGuard>` wrapper component for protected pages (`/profile`, `/generator`, `/favorites`), `<AuthPrompt>` banner/card component for guarding unauthenticated actions (ratings, comments, favorites, recipe creation), and `useRequireAuth` hook for interactive triggers. Added comprehensive 5-step E2E integration test suite (`tests/authFlow.test.ts`) verifying full Sign-in -> JWT Minting -> Token Verification -> Session Hydration -> Profile CRUD (`GET/PATCH /users/me`) -> Sign Out -> Expired/Tampered Token Rejection. Backend: consolidated `auth.ts`, all **46/46 M2 unit & E2E tests passing**. Frontend: Next.js 16 build ✓, lint ✓ (0 warnings). **All M2 backend and frontend roadmap items are 100% complete.**
 
 
+- `[2026-08-24] [M3]` **M3 step 5 — Task M3.2 AI Recipe Generator page completed on `feature/m3-recipes-ai`.** Implemented `frontend/src/app/generator/page.tsx`: ingredient tags input, dietary checkboxes auto-prefilled from user profile (`GET /users/me`), cooking time/servings/difficulty/equipment constraints, progress indicator during generation, recipe card display with pantry match badges, steps, `NutritionBadge`, `DisclaimerBanner` for AI & allergy warnings, interactive flavor pairing suggestions, and action buttons to Regenerate, Save as Draft, or Publish Recipe. Build ✓, lint (0 warnings) ✓.
+- `[2026-08-24] [M3]` **M3 step 6 — Task M3.3 Manual Recipe Editor completed.** Created shared `frontend/src/components/recipes/recipe-form.tsx` (title/slug/summary, image URL + ImgBB file upload, cooking details, dynamic ingredient list with reorder, dynamic step list with reorder, dietary labels/allergens/tags) used by two pages: `frontend/src/app/recipes/create/page.tsx` (create → draft or publish-immediately) and `frontend/src/app/recipes/[id]/edit/page.tsx` (load recipe, save changes, publish/unpublish toggle, delete with confirmation guard). Build ✓, lint (0 warnings) ✓.
+- `[2026-08-24] [M3]` **M3 step 7 — Task M3.4 Recipe Detail View completed. ALL M3 frontend tasks now complete.** Implemented `frontend/src/app/recipes/[id]/page.tsx`: recipe hero, metadata pills, rating/favorite stats, interactive servings scaler (1-20), checkable ingredient list with pantry match badges (`used`/`missing`/`substitution`), checkable step list, detailed `NutritionBadge`, `DisclaimerBanner` (§12.7 AI/allergy/nutrition disclaimers), interactive Groq AI flavor pairings widget (`suggestFlavorPairings`), owner/admin controls (Edit link, Publish/Unpublish toggle, Delete modal guard), and specialized `IngredientTagInput` component (`frontend/src/components/recipes/ingredient-tag-input.tsx`). Build ✓, lint (0 warnings) ✓.
