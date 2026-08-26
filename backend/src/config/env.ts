@@ -55,9 +55,9 @@ function loadEnv(): Env {
   const issues = parsed.error.issues
     .map((i) => `${i.path.join(".")}: ${i.message}`)
     .join(", ");
-  console.error(`[env] Invalid environment configuration: ${issues}`);
-  console.error("[env] Copy .env.example to .env and fill in real values before running.");
-  process.exit(1);
+  const msg = `[env] Invalid environment configuration: ${issues}. Copy .env.example to .env and fill in real values.`;
+  console.error(msg);
+  throw new Error(msg);
 }
 
 export const env: Env = loadEnv();
