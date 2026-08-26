@@ -1,21 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ApiError, deleteRecipe, getRecipe, publishRecipe, unpublishRecipe, updateRecipe } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type { CreateRecipeInput, Recipe } from "@/lib/types";
 import { Alert, Badge, Button, LoadingState, ErrorState } from "@/components/ui";
 import { RecipeForm } from "@/components/recipes/recipe-form";
 import { TrashBin } from "@gravity-ui/icons";
 
 interface EditRecipePageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default function EditRecipePage({ params }: EditRecipePageProps) {
-  const { id } = params;
+  const { id } = use(params);
   const router = useRouter();
+  const { token, isLoading: authLoading } = useAuth();
 
   // Load state
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -33,9 +35,10 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
 
-  // Load recipe on mount
+  // Load recipe once auth has hydrated so owner drafts resolve (optionalAuth)
   useEffect(() => {
-    getRecipe(id)
+    if (authLoading) return;
+    getRecipe(id, { token })
       .then((data) => {
         setRecipe(data);
         setIsLoading(false);
@@ -44,7 +47,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
         setLoadError(err instanceof ApiError ? err.message : "Failed to load the recipe.");
         setIsLoading(false);
       });
-  }, [id]);
+  }, [id, token, authLoading]);
 
   // ── Form submit ─────────────────────────────────────────────────────────────
   const handleSubmit = async (input: CreateRecipeInput) => {
@@ -54,7 +57,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
     setIsSubmitting(true);
 
     try {
-      const updated = await updateRecipe(id, input);
+      const updated = await updateRecipe(id, input, { token });
       setRecipe(updated);
       setSuccessMessage("Changes saved successfully!");
     } catch (err) {
@@ -77,8 +80,8 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
     setSubmitError(null);
     try {
       const updated = recipe.status === "published"
-        ? await unpublishRecipe(id)
-        : await publishRecipe(id);
+        ? await unpublishRecipe(id, { token })
+        : await publishRecipe(id, { token });
       setRecipe(updated);
       setSuccessMessage(
         updated.status === "published"
@@ -96,7 +99,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
   const handleDelete = async () => {
     setStatusActionLoading(true);
     try {
-      await deleteRecipe(id);
+      await deleteRecipe(id, { token });
       router.push("/recipes");
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.message : "Delete failed.");

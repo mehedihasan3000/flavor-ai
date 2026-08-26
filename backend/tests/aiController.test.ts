@@ -2,9 +2,25 @@ import jwt from "jsonwebtoken";
 import request from "supertest";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { env } from "../src/config/env.js";
+import { UserModel } from "../src/models/User.js";
 import { createApp } from "../src/server.js";
 import * as aiService from "../src/services/aiService.js";
 import * as imageService from "../src/services/imageService.js";
+
+vi.mock("../src/models/User.js", () => ({
+  UserModel: {
+    findOne: vi.fn().mockReturnValue({
+      lean: () => ({
+        exec: async () => ({
+          _id: "507f1f77bcf86cd799439011",
+          email: "chef@example.com",
+          name: "Chef",
+          role: "user",
+        }),
+      }),
+    }),
+  },
+}));
 
 const app = createApp();
 
@@ -19,6 +35,16 @@ function signToken(userId: string = "507f1f77bcf86cd799439011", role: "user" | "
 describe("AI Controller & Upload Routes Integration", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(UserModel.findOne).mockReturnValue({
+      lean: () => ({
+        exec: async () => ({
+          _id: "507f1f77bcf86cd799439011",
+          email: "chef@example.com",
+          name: "Chef",
+          role: "user",
+        }),
+      }),
+    } as never);
   });
 
   afterEach(() => {

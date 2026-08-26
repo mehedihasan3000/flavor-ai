@@ -21,6 +21,7 @@ import type {
   FlavorPairingSuggestion,
   PaginatedResult,
   PaginationQuery,
+  PantryMatchResult,
   Rating,
   RatingSummary,
   Recipe,
@@ -129,6 +130,11 @@ async function toApiError(response: Response): Promise<ApiError> {
 
 export interface RequestOptions {
   signal?: AbortSignal;
+  /**
+   * Explicit Bearer token. When omitted, the persisted session token
+   * (AuthProvider's localStorage entry) is attached automatically.
+   * Pass `null` to force an unauthenticated request.
+   */
   token?: string | null;
 }
 
@@ -139,10 +145,24 @@ interface InternalRequestOptions extends RequestOptions {
   body?: unknown;
 }
 
+// Must mirror STORAGE_KEY in lib/auth-context.tsx
+const AUTH_STORAGE_KEY = "flavorai_auth_token";
+
+function resolveAuthToken(options: InternalRequestOptions): string | null {
+  if (options.token !== undefined) return options.token;
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(AUTH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 async function request<T>(path: string, options: InternalRequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  if (options.token) headers.Authorization = `Bearer ${options.token}`;
+  const authToken = resolveAuthToken(options);
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
   let response: Response;
   try {
@@ -205,26 +225,33 @@ export function listRecipes(
   return request<PaginatedResult<Recipe>>(`/recipes${search ? `?${search}` : ""}`, options);
 }
 
-export function generateAIRecipe(
+export async function generateAIRecipe(
   input: AIRecipePromptInput,
   options: RequestOptions = {},
 ): Promise<AIRecipeOutput> {
-  return request<AIRecipeOutput>("/ai/recipes/generate", {
-    ...options,
-    method: "POST",
-    body: input,
-  });
+  // Backend wraps the output: { recipe, pantryMatch } — unwrap for callers
+  const res = await request<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }>(
+    "/ai/recipes/generate",
+    {
+      ...options,
+      method: "POST",
+      body: input,
+    },
+  );
+  return res.recipe;
 }
 
-export function suggestFlavorPairings(
+export async function suggestFlavorPairings(
   input: FlavorPairingInput,
   options: RequestOptions = {},
 ): Promise<{ pairings: FlavorPairingSuggestion[] }> {
-  return request<{ pairings: FlavorPairingSuggestion[] }>("/ai/flavor-pairings", {
+  // Backend returns { suggestions } — normalize to the client-side shape
+  const res = await request<{ suggestions: FlavorPairingSuggestion[] }>("/ai/flavor-pairings", {
     ...options,
     method: "POST",
     body: input,
   });
+  return { pairings: res.suggestions ?? [] };
 }
 
 export async function getRecipe(
@@ -289,17 +316,19 @@ export async function unpublishRecipe(
   return res.recipe;
 }
 
-export function uploadImage(
+export async function uploadImage(
   base64Data: string,
   mimeType?: string,
   filename?: string,
   options: RequestOptions = {},
 ): Promise<{ url: string; deleteUrl?: string }> {
-  return request<{ url: string; deleteUrl?: string }>("/upload/image", {
+  // Backend returns { imageUrl } — normalize to the client-side shape
+  const res = await request<{ imageUrl: string; deleteUrl?: string }>("/upload/image", {
     ...options,
     method: "POST",
     body: { image: base64Data, mimeType, filename },
   });
+  return { url: res.imageUrl, deleteUrl: res.deleteUrl };
 }
 
 // ─── Ratings (FR-RATE-01..05) ───────────────────────────────────────────────

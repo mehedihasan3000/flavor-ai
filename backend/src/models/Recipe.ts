@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const ingredientSchema = new Schema(
   {
@@ -88,4 +88,4 @@ recipeSchema.pre("save", function preSave(next) {
 
 export type Recipe = InferSchemaType<typeof recipeSchema>;
 
-export const RecipeModel = models.Recipe || model("Recipe", recipeSchema);
+export const RecipeModel = mongoose.models.Recipe || model("Recipe", recipeSchema);

@@ -16,7 +16,10 @@ export function Checkbox({ label, description, id: idProp, className, ...props }
   const id = idProp ?? autoId;
 
   return (
-    <div className="relative flex items-start gap-2.5">
+    <label
+      htmlFor={id}
+      className="relative flex cursor-pointer select-none items-start gap-2.5"
+    >
       <input type="checkbox" id={id} className="peer sr-only" {...props} />
       <span
         aria-hidden="true"
@@ -26,14 +29,14 @@ export function Checkbox({ label, description, id: idProp, className, ...props }
         aria-hidden="true"
         className="pointer-events-none absolute left-0 top-0.5 size-5 rounded-md p-1 text-white opacity-0 peer-checked:opacity-100"
       />
-      <label htmlFor={id} className={className ?? "text-sm text-foreground"}>
+      <span className={className ?? "text-sm text-foreground"}>
         {label}
         {description ? (
           <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
             {description}
           </span>
         ) : null}
-      </label>
-    </div>
+      </span>
+    </label>
   );
 }

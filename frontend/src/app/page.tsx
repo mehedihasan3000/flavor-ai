@@ -1,8 +1,25 @@
 import Link from "next/link";
 import { ArrowRight, Flame, Star } from "@gravity-ui/icons";
 import { Badge, buttonStyles, Card, EmptyState } from "@/components/ui";
+import { RecipeCard } from "@/components/recipes/recipe-card";
+import { listRecipes } from "@/lib/api";
+import type { Recipe } from "@/lib/types";
 
 const containerClass = "mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8";
+
+/**
+ * Fetches up to 3 of the newest published recipes for the featured section.
+ * Returns null when the API is unreachable (e.g. during static generation)
+ * so the homepage still renders.
+ */
+async function getFeaturedRecipes(): Promise<Recipe[] | null> {
+  try {
+    const result = await listRecipes({ sort: "newest", limit: 3 });
+    return result.items;
+  } catch {
+    return null;
+  }
+}
 
 const HERO_INGREDIENTS = ["chicken breast", "garlic", "olive oil", "spinach"] as const;
 
@@ -109,7 +126,9 @@ function HowItWorks() {
   );
 }
 
-function FeaturedRecipes() {
+async function FeaturedRecipes() {
+  const recipes = await getFeaturedRecipes();
+
   return (
     <section
       aria-labelledby="featured-heading"
@@ -133,18 +152,28 @@ function FeaturedRecipes() {
         </Link>
       </div>
 
-      <div className="mt-8">
-        <EmptyState
-          icon={<Star />}
-          title="No published recipes yet"
-          description="Fresh community recipes are on the way. Be the first to share one with the world."
-          action={
-            <Link href="/generator" className={buttonStyles()}>
-              Generate the first one
-            </Link>
-          }
-        />
-      </div>
+      {recipes && recipes.length > 0 ? (
+        <ul className="mt-8 grid list-none gap-6 p-0 sm:grid-cols-2 lg:grid-cols-3">
+          {recipes.map((recipe) => (
+            <li key={recipe.id}>
+              <RecipeCard recipe={recipe} className="h-full" />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-8">
+          <EmptyState
+            icon={<Star />}
+            title="No published recipes yet"
+            description="Fresh community recipes are on the way. Be the first to share one with the world."
+            action={
+              <Link href="/generator" className={buttonStyles()}>
+                Generate the first one
+              </Link>
+            }
+          />
+        </div>
+      )}
     </section>
   );
 }

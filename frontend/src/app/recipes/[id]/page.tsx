@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -43,11 +43,11 @@ import { RatingStars } from "@/components/recipes/rating-stars";
 import { CommentSection } from "@/components/recipes/comment-section";
 
 interface RecipeDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
-  const { id } = params;
+  const { id } = use(params);
   const router = useRouter();
   const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
 
@@ -209,7 +209,10 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     setPairingsLoading(true);
     setPairingError(null);
     try {
-      const result = await suggestFlavorPairings({ ingredient: ingredientName });
+      const result = await suggestFlavorPairings(
+        { ingredient: ingredientName },
+        { token },
+      );
       setPairings(result.pairings);
     } catch (err) {
       if (err instanceof ApiError) {
