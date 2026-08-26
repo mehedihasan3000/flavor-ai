@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const ratingSchema = new Schema(
   {
@@ -13,4 +13,4 @@ ratingSchema.index({ recipe: 1, user: 1 }, { unique: true });
 
 export type Rating = InferSchemaType<typeof ratingSchema>;
 
-export const RatingModel = models.Rating || model("Rating", ratingSchema);
+export const RatingModel = mongoose.models.Rating || model("Rating", ratingSchema);

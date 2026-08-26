@@ -18,6 +18,7 @@ import {
   publishRecipe,
   suggestFlavorPairings,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type {
   AIRecipeOutput,
   AIRecipePromptInput,
@@ -76,6 +77,8 @@ const GENERATION_PROGRESS_MESSAGES = [
 ];
 
 export default function GeneratorPage() {
+  const { token } = useAuth();
+
   // Form State
   const [ingredients, setIngredients] = useState<string[]>([]);
   const [dietaryLabels, setDietaryLabels] = useState<DietaryLabel[]>([]);
@@ -107,23 +110,24 @@ export default function GeneratorPage() {
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [createdRecipeId, setCreatedRecipeId] = useState<string | null>(null);
 
-  // Fetch profile on mount to pre-fill dietary preferences
+  // Fetch profile on mount to pre-fill dietary preferences (requires a session token)
   useEffect(() => {
-    getMyProfile()
-      .then((user) => {
+    if (!token) return;
+    getMyProfile({ token })
+      .then((userProfile) => {
         setHasProfile(true);
-        if (user.preferences) {
-          if (user.preferences.dietaryLabels?.length) {
-            setDietaryLabels(user.preferences.dietaryLabels);
+        if (userProfile.preferences) {
+          if (userProfile.preferences.dietaryLabels?.length) {
+            setDietaryLabels(userProfile.preferences.dietaryLabels);
           }
-          if (user.preferences.dislikedIngredients?.length) {
-            setExcludedIngredients(user.preferences.dislikedIngredients);
+          if (userProfile.preferences.dislikedIngredients?.length) {
+            setExcludedIngredients(userProfile.preferences.dislikedIngredients);
           }
-          if (user.preferences.cookingTimeMaxMinutes) {
-            setMaxTime(String(user.preferences.cookingTimeMaxMinutes));
+          if (userProfile.preferences.cookingTimeMaxMinutes) {
+            setMaxTime(String(userProfile.preferences.cookingTimeMaxMinutes));
           }
-          if (user.preferences.difficulty) {
-            setDifficulty(user.preferences.difficulty);
+          if (userProfile.preferences.difficulty) {
+            setDifficulty(userProfile.preferences.difficulty);
           }
         }
         setProfileLoaded(true);
@@ -132,7 +136,7 @@ export default function GeneratorPage() {
         setHasProfile(false);
         setProfileLoaded(true);
       });
-  }, []);
+  }, [token]);
 
   // Handle progress timer during generation
   useEffect(() => {
@@ -159,6 +163,11 @@ export default function GeneratorPage() {
       return;
     }
 
+    if (!token) {
+      setValidationError("Please sign in to generate recipes.");
+      return;
+    }
+
     setValidationError(null);
     setError(null);
     setSaveSuccessMessage(null);
@@ -181,7 +190,7 @@ export default function GeneratorPage() {
     };
 
     try {
-      const generated = await generateAIRecipe(promptInput);
+      const generated = await generateAIRecipe(promptInput, { token });
       setRecipe(generated);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -199,7 +208,7 @@ export default function GeneratorPage() {
     setSelectedIngredientForPairing(ingredientName);
     setPairingsLoading(true);
     try {
-      const result = await suggestFlavorPairings({ ingredient: ingredientName });
+      const result = await suggestFlavorPairings({ ingredient: ingredientName }, { token });
       setPairings(result.pairings);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -242,12 +251,12 @@ export default function GeneratorPage() {
         dietaryLabels: recipe.dietaryLabels,
         allergenWarnings: recipe.allergenWarnings,
         nutrition: recipe.nutrition,
-      });
+      }, { token });
 
       let finalRecipe = created;
 
       if (publishImmediately) {
-        finalRecipe = await publishRecipe(created.id);
+        finalRecipe = await publishRecipe(created.id, { token });
         setSaveSuccessMessage(`Recipe published successfully!`);
       } else {
         setSaveSuccessMessage(`Saved as draft successfully!`);
@@ -494,7 +503,7 @@ export default function GeneratorPage() {
             <div className="space-y-6">
               {/* Disclaimer Banners */}
               <DisclaimerBanner kind="ai" />
-              {recipe.allergenWarnings.length > 0 && (
+              {(recipe.allergenWarnings ?? []).length > 0 && (
                 <DisclaimerBanner kind="allergy" />
               )}
 
@@ -533,7 +542,7 @@ export default function GeneratorPage() {
                 </div>
 
                 {/* Dietary Badges */}
-                {recipe.dietaryLabels.length > 0 && (
+                {recipe.dietaryLabels?.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {recipe.dietaryLabels.map((diet) => (
                       <Badge key={diet} variant="success">
@@ -551,7 +560,7 @@ export default function GeneratorPage() {
                     </h3>
                   </div>
                   <ul className="mt-3 divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-neutral-50/50">
-                    {recipe.ingredients.map((ing: RecipeIngredient, idx: number) => (
+                    {(recipe.ingredients ?? []).map((ing: RecipeIngredient, idx: number) => (
                       <li
                         key={idx}
                         className="flex items-center justify-between p-3 text-sm"
@@ -595,7 +604,7 @@ export default function GeneratorPage() {
                     Step-by-Step Instructions
                   </h3>
                   <ol className="mt-3 space-y-3">
-                    {recipe.steps.map((step) => (
+                    {(recipe.steps ?? []).map((step) => (
                       <li
                         key={step.stepNumber}
                         className="shadow-2xs flex gap-3 rounded-xl border border-neutral-100 bg-white p-3.5 text-sm text-neutral-800"

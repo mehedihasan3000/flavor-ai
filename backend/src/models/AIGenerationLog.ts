@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const aiGenerationLogSchema = new Schema(
   {
@@ -22,4 +22,4 @@ aiGenerationLogSchema.index({ user: 1, createdAt: -1 });
 export type AIGenerationLog = InferSchemaType<typeof aiGenerationLogSchema>;
 
 export const AIGenerationLogModel =
-  models.AIGenerationLog || model("AIGenerationLog", aiGenerationLogSchema);
+  mongoose.models.AIGenerationLog || model("AIGenerationLog", aiGenerationLogSchema);
