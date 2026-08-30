@@ -7,6 +7,7 @@ import { ApiError, deleteRecipe, getRecipe, publishRecipe, unpublishRecipe, upda
 import { useAuth } from "@/lib/auth-context";
 import type { CreateRecipeInput, Recipe } from "@/lib/types";
 import { Alert, Badge, Button, LoadingState, ErrorState } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
 import { RecipeForm } from "@/components/recipes/recipe-form";
 import { TrashBin } from "@gravity-ui/icons";
 
@@ -18,6 +19,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
   const { id } = use(params);
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
+  const toast = useToast();
 
   // Load state
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -60,12 +62,19 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
       const updated = await updateRecipe(id, input, { token });
       setRecipe(updated);
       setSuccessMessage("Changes saved successfully!");
+      toast.success("Changes saved successfully!", { title: "Recipe updated" });
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.validation) setServerErrors(err.validation);
-        else setSubmitError(err.message);
+        if (err.validation) {
+          setServerErrors(err.validation);
+          toast.error("Please fix the highlighted fields.", { title: "Validation failed" });
+        } else {
+          setSubmitError(err.message);
+          toast.error(err.message, { title: "Update failed" });
+        }
       } else {
         setSubmitError("An unexpected error occurred.");
+        toast.error("An unexpected error occurred.", { title: "Update failed" });
       }
     } finally {
       setIsSubmitting(false);
@@ -83,13 +92,18 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
         ? await unpublishRecipe(id, { token })
         : await publishRecipe(id, { token });
       setRecipe(updated);
-      setSuccessMessage(
+      const msg =
         updated.status === "published"
           ? "Recipe published and now visible to everyone."
-          : "Recipe moved back to draft.",
-      );
+          : "Recipe moved back to draft.";
+      setSuccessMessage(msg);
+      toast.success(msg, {
+        title: updated.status === "published" ? "Published" : "Unpublished",
+      });
     } catch (err) {
-      setSubmitError(err instanceof ApiError ? err.message : "Status change failed.");
+      const msg = err instanceof ApiError ? err.message : "Status change failed.";
+      setSubmitError(msg);
+      toast.error(msg, { title: "Update failed" });
     } finally {
       setStatusActionLoading(false);
     }
@@ -100,9 +114,12 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
     setStatusActionLoading(true);
     try {
       await deleteRecipe(id, { token });
+      toast.success(`"${recipe?.title ?? "Recipe"}" was deleted.`, { title: "Recipe deleted" });
       router.push("/recipes");
     } catch (err) {
-      setSubmitError(err instanceof ApiError ? err.message : "Delete failed.");
+      const msg = err instanceof ApiError ? err.message : "Delete failed.";
+      setSubmitError(msg);
+      toast.error(msg, { title: "Delete failed" });
       setDeleteConfirm(false);
       setStatusActionLoading(false);
     }
