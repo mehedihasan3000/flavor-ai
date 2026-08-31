@@ -6,11 +6,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeSlash, Flame, Lock, Person } from "@gravity-ui/icons";
 import { useAuth } from "@/lib/auth-context";
 import { Alert, Button, Card, Input } from "@/components/ui";
+import { GoogleSignInButton } from "@/components/auth";
+
+const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
+  google_denied: "Google sign-in was cancelled.",
+  google_failed: "We couldn't complete Google sign-in. Please try again.",
+  google_state_mismatch: "That Google sign-in link expired. Please try again.",
+  google_email_unverified: "Your Google account's email isn't verified yet.",
+  google_unconfigured: "Google sign-in isn't available right now.",
+};
 
 function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/profile";
+  const googleError = searchParams.get("error");
 
   const { signIn, isAuthenticated } = useAuth();
 
@@ -85,6 +95,25 @@ function SignInContent() {
       </div>
 
       <Card className="mt-8 p-6 sm:p-8">
+        {googleError && !error ? (
+          <Alert variant="danger" className="mb-4">
+            {GOOGLE_ERROR_MESSAGES[googleError] || GOOGLE_ERROR_MESSAGES.google_failed}
+          </Alert>
+        ) : null}
+
+        <GoogleSignInButton callbackUrl={callbackUrl} />
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground font-medium">
+              Or sign in with email
+            </span>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {error ? <Alert variant="danger">{error}</Alert> : null}
 

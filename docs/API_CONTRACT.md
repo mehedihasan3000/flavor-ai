@@ -50,6 +50,16 @@ after a Better Auth session is confirmed; the secret never reaches browser JS
 Users are matched by `providerId`; if absent, a new `User` is created (`role: "user"`,
 name defaults to `"User"` when the token carries no name). Invalid/expired token → 401.
 
+**Additive (post-freeze):** the response `user` also includes
+`avatarUrl: string | null`. On first insert it's seeded from the token's
+optional `picture` claim (e.g. the Google account photo); existing consumers
+reading only `{ id, name, email, role }` are unaffected. Google sign-in (M?):
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` live in `frontend/.env` only — the
+Next.js route handlers under `/api/auth/google` run the OAuth 2.0 Authorization
+Code flow, mint the same HS256 JWT via `lib/jwt.ts` (`sub` = `google_<sub>`),
+and hand it to this same `/auth/token/verify` endpoint. The backend has no
+Google-specific code and never sees the client secret.
+
 **`POST /auth/logout` → 204** — no body. Stateless JWT revocation is client-side;
 the endpoint exists for contract compliance.
 

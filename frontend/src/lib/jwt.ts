@@ -26,6 +26,8 @@ export interface MintTokenPayload {
   email: string;
   name?: string;
   role?: "user" | "admin";
+  /** OAuth provider avatar (e.g. Google `picture`); synced to `User.avatarUrl` on first sign-in. */
+  picture?: string;
 }
 
 /**
@@ -44,6 +46,7 @@ export function mintAccessToken(payload: MintTokenPayload): string {
     email: payload.email,
     name: payload.name ?? "User",
     role: payload.role ?? "user",
+    ...(payload.picture ? { picture: payload.picture } : {}),
     iss: JWT_ISSUER,
     aud: JWT_AUDIENCE,
     iat: now,

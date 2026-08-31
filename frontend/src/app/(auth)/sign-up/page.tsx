@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeSlash, Flame, Person } from "@gravity-ui/icons";
 import { useAuth } from "@/lib/auth-context";
 import { Alert, Button, Card, Input } from "@/components/ui";
+import { GoogleSignInButton } from "@/components/auth";
 
 function SignUpContent() {
   const router = useRouter();
@@ -80,6 +81,19 @@ function SignUpContent() {
       </div>
 
       <Card className="mt-8 p-6 sm:p-8">
+        <GoogleSignInButton callbackUrl="/profile" />
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground font-medium">
+              Or sign up with email
+            </span>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {error ? <Alert variant="danger">{error}</Alert> : null}
 

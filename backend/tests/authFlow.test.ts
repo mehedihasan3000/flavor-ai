@@ -89,6 +89,7 @@ describe("E2E Sign-in / Sign-out / Session Flow Verification (FR-AUTH-01..07)", 
       name: mockUserDoc.name,
       email: mockUserDoc.email,
       role: "user",
+      avatarUrl: mockUserDoc.avatarUrl,
     });
   });
 

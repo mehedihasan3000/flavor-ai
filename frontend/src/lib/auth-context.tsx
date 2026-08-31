@@ -18,8 +18,38 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
+  /** Adopts a token minted by the Google OAuth callback route (see `/auth/callback`). */
+  signInWithToken: (token: string) => Promise<void>;
   signOut: () => Promise<void>;
   setSession: (token: string, user: AuthUser) => void;
+}
+
+/** Best-effort, unverified read of the mint-time claims — used only as a UI
+ * fallback when the backend verify round-trip is unreachable (matches the
+ * mint-response fallback `signIn`/`signUp` already use). */
+function decodeTokenUser(token: string): AuthUser | null {
+  try {
+    const [, payloadSegment] = token.split(".");
+    if (!payloadSegment) return null;
+    const json = atob(payloadSegment.replace(/-/g, "+").replace(/_/g, "/"));
+    const claims = JSON.parse(json) as {
+      sub?: string;
+      email?: string;
+      name?: string;
+      role?: UserRole;
+      picture?: string;
+    };
+    if (!claims.sub || !claims.email) return null;
+    return {
+      id: claims.sub,
+      email: claims.email,
+      name: claims.name || "User",
+      role: claims.role === "admin" ? "admin" : "user",
+      avatarUrl: claims.picture ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 const STORAGE_KEY = "flavorai_auth_token";
@@ -195,6 +225,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [setSession],
   );
 
+  const signInWithToken = useCallback(
+    async (newToken: string): Promise<void> => {
+      const fallbackUser = decodeTokenUser(newToken);
+
+      try {
+        const apiUrl = getApiBaseUrl();
+        const verifyRes = await fetch(`${apiUrl}/auth/token/verify`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken}`,
+            Accept: "application/json",
+          },
+        });
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          if (verifyData?.user) {
+            setSession(newToken, verifyData.user);
+            return;
+          }
+        }
+      } catch {
+        // Backend optional fallback: use the token's own claims below.
+      }
+
+      if (!fallbackUser) {
+        throw new Error("Failed to establish a session from the Google sign-in token.");
+      }
+      setSession(newToken, fallbackUser);
+    },
+    [setSession],
+  );
+
   const signOut = useCallback(async (): Promise<void> => {
     const currentToken = token;
     try {
@@ -228,10 +290,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(token && user),
       signIn,
       signUp,
+      signInWithToken,
       signOut,
       setSession,
     }),
-    [user, token, isLoading, signIn, signUp, signOut, setSession],
+    [user, token, isLoading, signIn, signUp, signInWithToken, signOut, setSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

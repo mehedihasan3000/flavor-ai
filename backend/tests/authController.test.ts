@@ -53,6 +53,7 @@ describe("POST /api/v1/auth/token/verify", () => {
         name: "Ada",
         email: "ada@example.com",
         role: "user",
+        avatarUrl: null,
       },
     });
     expect(findOneAndUpdateMock).toHaveBeenCalledWith(
@@ -63,6 +64,7 @@ describe("POST /api/v1/auth/token/verify", () => {
           email: "ada@example.com",
           name: "Ada",
           role: "user",
+          avatarUrl: null,
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },

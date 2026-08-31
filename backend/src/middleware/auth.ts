@@ -14,6 +14,8 @@ export interface AccessTokenClaims {
   email: string;
   name?: string;
   role?: UserRole;
+  /** OAuth provider avatar (e.g. Google `picture`), if the token carries one. */
+  picture?: string;
 }
 
 interface UserRecord {
@@ -67,6 +69,7 @@ export function verifyAccessToken(token: string): AccessTokenClaims {
       email: typeof decoded.email === "string" ? decoded.email : "",
       name: typeof decoded.name === "string" ? decoded.name : undefined,
       role: USER_ROLE.includes(decoded.role as UserRole) ? (decoded.role as UserRole) : "user",
+      picture: typeof decoded.picture === "string" ? decoded.picture : undefined,
     };
   } catch {
     throw new ApiError(401, "UNAUTHORIZED", "Invalid or expired token.");
