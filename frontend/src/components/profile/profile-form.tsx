@@ -127,7 +127,7 @@ function validate(form: FormState): FieldErrors {
 }
 
 export function ProfileForm({ token: explicitToken }: { token?: string }) {
-  const { token: authContextToken, isLoading: isAuthLoading } = useAuth();
+  const { token: authContextToken, isLoading: isAuthLoading, patchUser } = useAuth();
   const token = explicitToken ?? authContextToken;
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -238,6 +238,7 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
       const updated = await updateMyProfile(payload, { token });
       setProfile(updated);
       setForm(profileToForm(updated));
+      patchUser({ name: updated.name, avatarUrl: updated.avatarUrl ?? null });
       setFormAlert({ variant: "success", message: "Your profile has been updated." });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;

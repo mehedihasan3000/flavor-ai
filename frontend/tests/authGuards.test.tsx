@@ -27,6 +27,8 @@ describe("Frontend Unit & Component: AuthGuard and AuthPrompt", () => {
       signUp: vi.fn(),
       signOut: vi.fn(),
       setSession: vi.fn(),
+      refresh: vi.fn(),
+      patchUser: vi.fn(),
     });
 
     render(
@@ -49,6 +51,8 @@ describe("Frontend Unit & Component: AuthGuard and AuthPrompt", () => {
       signUp: vi.fn(),
       signOut: vi.fn(),
       setSession: vi.fn(),
+      refresh: vi.fn(),
+      patchUser: vi.fn(),
     });
 
     render(
@@ -77,6 +81,8 @@ describe("Frontend Unit & Component: AuthGuard and AuthPrompt", () => {
       signUp: vi.fn(),
       signOut: vi.fn(),
       setSession: vi.fn(),
+      refresh: vi.fn(),
+      patchUser: vi.fn(),
     });
 
     render(
@@ -104,6 +110,8 @@ describe("Frontend Unit & Component: AuthGuard and AuthPrompt", () => {
       signUp: vi.fn(),
       signOut: vi.fn(),
       setSession: vi.fn(),
+      refresh: vi.fn(),
+      patchUser: vi.fn(),
     });
 
     render(
@@ -125,6 +133,8 @@ describe("Frontend Unit & Component: AuthGuard and AuthPrompt", () => {
       signUp: vi.fn(),
       signOut: vi.fn(),
       setSession: vi.fn(),
+      refresh: vi.fn(),
+      patchUser: vi.fn(),
     });
 
     render(

@@ -99,7 +99,16 @@ export function Navbar() {
                     : "border border-border bg-card text-heading hover:border-border-strong hover:bg-background"
                 }`}
               >
-                <Person className="size-4 text-primary-strong" aria-hidden="true" />
+                {user?.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.avatarUrl}
+                    alt={user?.name ? `${user.name} avatar` : "User avatar"}
+                    className="size-6 shrink-0 rounded-full object-cover border border-border"
+                  />
+                ) : (
+                  <Person className="size-4 text-primary-strong" aria-hidden="true" />
+                )}
                 <span>{user?.name || "Profile"}</span>
               </Link>
               <button

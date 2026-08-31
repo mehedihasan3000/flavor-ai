@@ -53,6 +53,7 @@ describe("POST /api/v1/auth/token/verify", () => {
         name: "Ada",
         email: "ada@example.com",
         role: "user",
+        avatarUrl: null,
       },
     });
     expect(findOneAndUpdateMock).toHaveBeenCalledWith(

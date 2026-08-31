@@ -13,6 +13,7 @@ interface VerifiedUserRecord {
   email: string;
   name: string;
   role: UserRole;
+  avatarUrl?: string | null;
 }
 
 export const authRouter = Router();
@@ -50,6 +51,7 @@ authRouter.post("/token/verify", async (req, res, next) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatarUrl: (user.avatarUrl as string | null) ?? null,
       },
     });
   } catch (err) {
