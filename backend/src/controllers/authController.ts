@@ -26,16 +26,18 @@ authRouter.post("/token/verify", async (req, res, next) => {
   try {
     const claims = verifyAccessToken(extractBearerToken(req));
 
-    const user = (await UserModel.findOneAndUpdate(
+    // Build $setOnInsert payload — include avatarUrl when provided (real Google login)
+    const setOnInsert: Record<string, unknown> = {
+      providerId: claims.sub,
+      email: claims.email,
+      name: claims.name ?? "User",
+      role: claims.role ?? "user",
+    };
+    if (claims.avatarUrl) setOnInsert.avatarUrl = claims.avatarUrl;
+
+    let user = (await UserModel.findOneAndUpdate(
       { providerId: claims.sub },
-      {
-        $setOnInsert: {
-          providerId: claims.sub,
-          email: claims.email,
-          name: claims.name ?? "User",
-          role: claims.role ?? "user",
-        },
-      },
+      { $setOnInsert: setOnInsert },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     )
       .lean()
@@ -43,6 +45,18 @@ authRouter.post("/token/verify", async (req, res, next) => {
 
     if (!user) {
       throw new ApiError(401, "UNAUTHORIZED", "User account not found.");
+    }
+
+    // If existing user had no avatar but Google just supplied one, enrich it (one-time)
+    if (claims.avatarUrl && !user.avatarUrl) {
+      const enriched = (await UserModel.findByIdAndUpdate(
+        user._id,
+        { $set: { avatarUrl: claims.avatarUrl } },
+        { new: true },
+      )
+        .lean()
+        .exec()) as VerifiedUserRecord | null;
+      if (enriched) user = enriched;
     }
 
     res.status(200).json({

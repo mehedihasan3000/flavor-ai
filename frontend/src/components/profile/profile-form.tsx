@@ -143,7 +143,13 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
+  const [avatarPreviewFailed, setAvatarPreviewFailed] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset preview error when URL changes (e.g. after Google login or manual edit)
+  useEffect(() => {
+    Promise.resolve().then(() => setAvatarPreviewFailed(false));
+  }, [form.avatarUrl]);
 
   const loadProfile = useCallback(
     (signal?: AbortSignal) => {
@@ -374,15 +380,14 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
             <div className="space-y-3">
               <div className="flex items-center gap-4">
                 <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-neutral-100">
-                  {form.avatarUrl.trim() ? (
+                  {form.avatarUrl.trim() && !avatarPreviewFailed ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={form.avatarUrl.trim()}
                       alt="Avatar preview"
                       className="h-full w-full object-cover"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = "none";
-                      }}
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarPreviewFailed(true)}
                     />
                   ) : (
                     <Person className="size-8 text-muted-foreground" aria-hidden="true" />

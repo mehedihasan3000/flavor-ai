@@ -18,6 +18,7 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
+  signInWithGoogle: (credential: string) => Promise<void>;
   signOut: () => Promise<void>;
   setSession: (token: string, user: AuthUser) => void;
   refresh: () => Promise<void>;
@@ -271,6 +272,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [setSession],
   );
 
+  const signInWithGoogle = useCallback(
+    async (credential: string): Promise<void> => {
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.safeMessage || "Google sign-in failed. Please try again.");
+      }
+
+      const { token: newToken, user: newUser } = data as { token: string; user: AuthUser };
+
+      // Verify and hydrate against the backend database (same flow as email sign-in)
+      // Merge Google picture as fallback if backend still returns null (e.g. existing email user).
+      try {
+        const apiUrl = getApiBaseUrl();
+        const verifyRes = await fetch(`${apiUrl}/auth/token/verify`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken}`,
+            Accept: "application/json",
+          },
+        });
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          if (verifyData?.user) {
+            const backendUser = verifyData.user as AuthUser;
+            const merged: AuthUser = {
+              ...backendUser,
+              // Prefer backend's persisted avatar, fall back to Google's picture
+              avatarUrl: backendUser.avatarUrl ?? newUser.avatarUrl ?? null,
+              name: backendUser.name || newUser.name,
+            };
+            setSession(newToken, merged);
+
+            // If backend still has no avatar but Google provided one, persist it explicitly
+            // via PATCH /users/me (covers race where $setOnInsert enrichment was skipped).
+            if (!backendUser.avatarUrl && newUser.avatarUrl) {
+              fetch(`${apiUrl}/users/me`, {
+                method: "PATCH",
+                headers: {
+                  Authorization: `Bearer ${newToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ avatarUrl: newUser.avatarUrl }),
+              }).catch(() => {
+                // silent — avatar will still show from merged state
+              });
+            }
+            return;
+          }
+        }
+      } catch {
+        // Backend optional fallback
+      }
+
+      setSession(newToken, newUser);
+    },
+    [setSession],
+  );
+
   const signOut = useCallback(async (): Promise<void> => {
     const currentToken = token;
     try {
@@ -304,12 +369,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(token && user),
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
       setSession,
       refresh,
       patchUser,
     }),
-    [user, token, isLoading, signIn, signUp, signOut, setSession, refresh, patchUser],
+    [user, token, isLoading, signIn, signUp, signInWithGoogle, signOut, setSession, refresh, patchUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

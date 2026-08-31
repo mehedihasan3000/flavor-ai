@@ -23,7 +23,13 @@ export function Navbar() {
   const pathname = usePathname();
   const { user, isAuthenticated, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const close = () => setOpen(false);
+
+  // Reset fallback when avatar URL changes (e.g. after Google login or profile update)
+  useEffect(() => {
+    Promise.resolve().then(() => setAvatarLoadFailed(false));
+  }, [user?.avatarUrl]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,12 +105,14 @@ export function Navbar() {
                     : "border border-border bg-card text-heading hover:border-border-strong hover:bg-background"
                 }`}
               >
-                {user?.avatarUrl ? (
+                {user?.avatarUrl && !avatarLoadFailed ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={user.avatarUrl}
                     alt={user?.name ? `${user.name} avatar` : "User avatar"}
                     className="size-6 shrink-0 rounded-full object-cover border border-border"
+                    referrerPolicy="no-referrer"
+                    onError={() => setAvatarLoadFailed(true)}
                   />
                 ) : (
                   <Person className="size-4 text-primary-strong" aria-hidden="true" />
