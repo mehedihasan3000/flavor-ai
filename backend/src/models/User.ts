@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const userSchema = new Schema(
   {
@@ -32,4 +32,4 @@ userSchema.index({ providerId: 1 }, { unique: true, sparse: true });
 
 export type User = InferSchemaType<typeof userSchema>;
 
-export const UserModel = models.User || model("User", userSchema);
+export const UserModel = mongoose.models.User || model("User", userSchema);

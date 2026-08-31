@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const favoriteSchema = new Schema(
   {
@@ -13,4 +13,4 @@ favoriteSchema.index({ user: 1, createdAt: -1 });
 
 export type Favorite = InferSchemaType<typeof favoriteSchema>;
 
-export const FavoriteModel = models.Favorite || model("Favorite", favoriteSchema);
+export const FavoriteModel = mongoose.models.Favorite || model("Favorite", favoriteSchema);

@@ -1,9 +1,16 @@
 import { Router } from "express";
 import { authRouter } from "../controllers/authController.js";
+import { userRouter } from "../controllers/userController.js";
 import { getDBState } from "../config/db.js";
+import { adminRouter } from "./admin.js";
+import { commentDetailRouter } from "./commentDetail.js";
+import { commentsRouter } from "./comments.js";
+import { favoritesRouter } from "./favorites.js";
+import { aiRouter } from "./ai.js";
 import { ratingsRouter } from "./ratings.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { recipesRouter } from "./recipes.js";
+import { uploadRouter } from "./upload.js";
 
 export const v1Router = Router();
 
@@ -23,8 +30,17 @@ v1Router.get("/health", (_req, res) => {
 // M2: Better Auth bridge (tighter rate limit on auth endpoints)
 v1Router.use("/auth", authLimiter, authRouter);
 
+// M2: Profile & preferences
+v1Router.use("/users", userRouter);
+
 // M3: /recipes, /ai
 // M4: /recipes/:id/ratings, /recipes/:id/comments, /favorites, /admin
 
 v1Router.use("/recipes/:id/ratings", ratingsRouter);
+v1Router.use("/recipes/:id/comments", commentsRouter);
+v1Router.use("/comments", commentDetailRouter);
+v1Router.use("/favorites", favoritesRouter);
+v1Router.use("/admin", adminRouter);
 v1Router.use("/recipes", recipesRouter);
+v1Router.use("/ai", aiRouter);
+v1Router.use("/upload", uploadRouter);

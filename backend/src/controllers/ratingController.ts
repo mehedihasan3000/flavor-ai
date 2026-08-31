@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { Types } from "mongoose";
 import { RatingModel } from "../models/Rating.js";
 import { RecipeModel } from "../models/Recipe.js";
 import type { AuthUser } from "../types/auth.js";
@@ -28,8 +29,11 @@ function currentUser(req: Request): AuthUser {
 
 /** Recomputes the recipe's rating aggregates after any rating change (FR-RATE-04). */
 async function recomputeRatingAggregates(recipeId: string): Promise<RatingSummary> {
+  // Raw aggregate() pipelines bypass Mongoose's Query-level casting, so the
+  // string id must be cast to ObjectId explicitly or $match never matches
+  // the stored ObjectId `recipe` field against real MongoDB.
   const rows = (await RatingModel.aggregate([
-    { $match: { recipe: recipeId } },
+    { $match: { recipe: new Types.ObjectId(recipeId) } },
     { $group: { _id: null, average: { $avg: "$value" }, count: { $sum: 1 } } },
   ])) as { _id: null; average: number; count: number }[];
 
@@ -53,11 +57,31 @@ function toRatingResponse(record: RatingRecord, recipeId: string, userId: string
   };
 }
 
-/** GET /recipes/:id/ratings — public summary (FR-RATE-04). */
+/**
+ * GET /recipes/:id/ratings — public summary (FR-RATE-04). Runs behind
+ * `optionalAuth`: when a valid token is present, `myRating` reports the
+ * caller's own rating (or `null` if they haven't rated yet) so the frontend
+ * can pre-select the interactive stars; the key is omitted entirely for
+ * guests to keep the response backward-compatible with the frozen contract.
+ */
 export const getRatingSummary = asyncHandler(async (req: Request, res: Response) => {
   const recipeId = parseIdParam(req.params.id, "id");
   const recipe = await requirePublishedRecipe(recipeId);
-  res.json({ averageRating: recipe.averageRating ?? 0, ratingCount: recipe.ratingCount ?? 0 });
+
+  const response: { averageRating: number; ratingCount: number; myRating?: number | null } = {
+    averageRating: recipe.averageRating ?? 0,
+    ratingCount: recipe.ratingCount ?? 0,
+  };
+
+  if (req.user) {
+    const existing = (await RatingModel.findOne({
+      recipe: recipeId,
+      user: req.user.id,
+    })) as RatingRecord | null;
+    response.myRating = existing ? existing.value : null;
+  }
+
+  res.json(response);
 });
 
 /** PUT /recipes/:id/ratings — create/update own rating, idempotent (FR-RATE-01..03/05). */
@@ -71,9 +95,10 @@ export const upsertRating = asyncHandler(async (req: Request, res: Response) => 
     throw new ApiError(403, "FORBIDDEN", "Recipe owners cannot rate their own recipe.");
   }
 
-  const existing = (await RatingModel.findOne({ recipe: recipeId, user: user.id })) as
-    | RatingRecord
-    | null;
+  const existing = (await RatingModel.findOne({
+    recipe: recipeId,
+    user: user.id,
+  })) as RatingRecord | null;
 
   let record: RatingRecord;
   if (existing) {

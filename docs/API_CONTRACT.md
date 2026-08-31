@@ -61,6 +61,7 @@ the endpoint exists for contract compliance.
 |--------|------|------|-------------|
 | GET | `/users/me` | required | Own profile + dietary preferences (FR-AUTH-06) |
 | PATCH | `/users/me` | required | Update name, avatar, bio, preferences (FR-AUTH-06) |
+| GET | `/users/me/stats` | required | Own recipe counts + ratings/favorites/comments received |
 
 **`GET /users/me` → 200**
 ```json
@@ -92,6 +93,23 @@ the endpoint exists for contract compliance.
 ```
 → 200 with updated profile. 400 on invalid shape.
 
+**Additive (post-freeze): `GET /users/me/stats` → 200**
+```json
+{
+  "totalRecipes": 12,
+  "draftCount": 2,
+  "publishedCount": 9,
+  "hiddenCount": 1,
+  "totalRatingsReceived": 34,
+  "totalFavoritesReceived": 21,
+  "totalCommentsReceived": 8,
+  "averageRating": 4.3
+}
+```
+Not in the originally frozen contract — added for the frontend dashboard's stat
+cards. `averageRating` is the rating-weighted mean across every recipe the
+caller owns (0 when nothing has been rated yet).
+
 ---
 
 ## `/recipes` — CRUD, publishing, search (M3)
@@ -111,6 +129,15 @@ the endpoint exists for contract compliance.
 **`GET /recipes` query params** (`RecipeSearchQuery`):
 `page`, `limit`, `q`, `category`, `cuisine`, `diet`, `difficulty`, `maxCookingTimeMinutes`,
 `sort=newest|highest-rated|most-popular`
+
+**Additive (post-freeze):** `mine=true` (requires auth — the route runs behind
+`optionalAuth`) switches the base filter from `status: "published"` to the
+caller's own `owner`, across every status, sorted by `createdAt` desc instead
+of `sort`; `status=draft|published|hidden` is only honored alongside
+`mine=true` (ignored otherwise, so public discovery can never leak drafts —
+Business Rules 3/4/10). `mine=true` without a valid token → 401. Added for the
+frontend dashboard ("my drafts/published/hidden"), for which the frozen
+contract had no endpoint.
 
 **`POST /recipes` body** (`CreateRecipeInput`):
 ```json
@@ -196,10 +223,16 @@ the endpoint exists for contract compliance.
 |--------|------|------|-------------|
 | PUT | `/recipes/:id/ratings` | required | Create or update own rating (idempotent, FR-RATE-02/03) |
 | DELETE | `/recipes/:id/ratings` | required | Remove own rating (FR-RATE-03) |
-| GET | `/recipes/:id/ratings` | public | Summary `{ averageRating, ratingCount }` |
+| GET | `/recipes/:id/ratings` | optional | Summary `{ averageRating, ratingCount, myRating? }` |
 
 Body: `{ "value": 5 }` (integer 1–5). Owner rating own recipe → 403 (FR-RATE-05).
 Response on PUT → 200 `{ rating: { id, recipe, user, value, createdAt, updatedAt }, summary }`.
+
+**Additive (post-freeze):** GET runs behind `optionalAuth` — with a valid Bearer
+token, the summary includes `myRating: number | null` (the caller's own rating,
+or `null` if they haven't rated yet) so the UI can pre-select the interactive
+stars. The key is omitted entirely for guests/unauthenticated requests, so
+existing consumers reading only `{ averageRating, ratingCount }` are unaffected.
 
 ---
 
@@ -216,6 +249,13 @@ Body: `{ "body": "text (1–2000 chars, sanitized)" }` (`CreateCommentInput`).
 Comment response: `{ id, recipe, user, body, moderationStatus, createdAt, updatedAt }`.
 Moderated comments hidden from public list.
 
+**Additive (post-freeze):** every comment response also includes
+`authorName: string | null` and `authorAvatarUrl: string | null` — `user`
+remains the raw author id unchanged. `GET` (list) populates these from the
+`User` document; `POST`/`PATCH` fill `authorName` from the authenticated
+caller's own name (no extra lookup) and leave `authorAvatarUrl: null`, refreshed
+on the next list fetch.
+
 ---
 
 ## `/favorites` — favorites (M4)
@@ -223,10 +263,20 @@ Moderated comments hidden from public list.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/favorites` | required | Own favorites, paginated (FR-FAV-03) |
+| GET | `/favorites/:recipeId` | required | Own favorite status for one recipe |
 | PUT | `/favorites/:recipeId` | required | Add favorite (idempotent, unique per user) |
 | DELETE | `/favorites/:recipeId` | required | Remove favorite |
 
 Unpublished/deleted recipes are filtered out of favorites lists (FR-FAV-04).
+
+**Additive (post-freeze):** `GET /favorites/:recipeId` → 200
+`{ favorited: boolean }`. Not in the originally frozen contract — added so a
+recipe detail page can render an accurate favorite toggle without paginating
+the caller's whole favorites list. The `recipe` card projection returned by
+`GET /favorites` also now includes `dietaryLabels`, `source`, `status`
+(always `"published"` here), and `totalTimeMinutes` (defaulting to
+`[]`/`"manual"`/`0` if absent) so the favorites page can render the same
+`RecipeCard` used on `/recipes`.
 
 ---
 
@@ -234,15 +284,36 @@ Unpublished/deleted recipes are filtered out of favorites lists (FR-FAV-04).
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/admin/users` | admin | List users |
-| GET | `/admin/recipes` | admin | List all recipes incl. hidden |
+| GET | `/admin/users` | admin | List/search users (`AdminUserSearchQuery`: `page`, `limit`, `q`, `role`) |
+| GET | `/admin/recipes` | admin | List all recipes incl. hidden/draft (`AdminRecipeSearchQuery`: `page`, `limit`, `q`, `status`) |
 | PATCH | `/admin/recipes/:id` | admin | Hide/restore recipe (FR-ADMIN-02) |
 | DELETE | `/admin/recipes/:id` | admin | Delete recipe |
-| GET | `/admin/comments` | admin | List comments incl. moderated |
+| GET | `/admin/comments` | admin | List comments incl. moderated (`AdminCommentSearchQuery`: `page`, `limit`, `recipeId`, `moderationStatus`) |
 | PATCH | `/admin/comments/:id` | admin | Moderate/unmoderate comment |
 | DELETE | `/admin/comments/:id` | admin | Delete comment |
 
-All admin actions are logged (FR-ADMIN-03). Non-admin → 403.
+All admin actions are logged (FR-ADMIN-03, structured `console.info`; no separate
+audit-log model — FR-ADMIN-04 allows protected endpoints without a full
+dashboard for MVP). Non-admin → 403.
+
+**`PATCH /admin/recipes/:id` body** (`AdminRecipeModerationInput`):
+```json
+{ "status": "hidden" }
+```
+Only `"published"` and `"hidden"` are accepted — draft/publish stays the
+recipe owner's workflow (M3); admin only hides or restores. → 200
+`{ recipe: { id, title, slug, owner, status, averageRating, ratingCount, favoriteCount, commentCount, publishedAt, createdAt, updatedAt } }`.
+
+**`PATCH /admin/comments/:id` body** (`AdminCommentModerationInput`):
+```json
+{ "moderationStatus": "moderated" }
+```
+→ 200 `{ comment: { id, recipe, user, body, moderationStatus, createdAt, updatedAt } }`.
+Recomputes the parent recipe's `commentCount` (visible-only) after every
+moderate/unmoderate/delete.
+
+`GET /admin/users` items: `{ id, name, email, avatarUrl, bio, role, createdAt, updatedAt }`.
+All three list endpoints return the standard paginated envelope `{ items, page, limit, total, totalPages }`.
 
 ---
 
@@ -252,3 +323,6 @@ All admin actions are logged (FR-ADMIN-03). Non-admin → 403.
 - **Uniqueness:** ratings and favorites are unique per `(recipe, user)` — updates, never duplicates.
 - **Search visibility:** only `status=published` recipes appear in `/recipes`; drafts only via `/recipes/:id` to owner/admin.
 - **Validation:** every request body/query validated by the matching Zod schema in `backend/src/types/index.ts` before reaching controllers.
+- **Sanitization:** comment bodies are stripped of HTML/markup (`utils/sanitize.ts`) before length validation, so no markup is ever stored (NFR-SEC-06). All `req.body`/`req.query` also pass through `middleware/sanitizeInput.ts`, which drops MongoDB operator (`$…`) and dotted keys app-wide before any handler runs (NFR-SEC-05, defense-in-depth on top of per-field Zod validation).
+- **Rate limiting:** `baseLimiter` (300 req/15 min/IP) applies app-wide; `commentLimiter` (20 req/10 min/IP) additionally guards `POST /recipes/:id/comments`, `PATCH /comments/:id`, `DELETE /comments/:id` (NFR-SEC-07).
+- **CSRF:** the API is Bearer-JWT-only (no cookie-based session auth exists yet), which is inherently not CSRF-exploitable — a cross-site page cannot attach a header the browser doesn't send automatically. Revisit if/when M2's auth bridge adopts cookie-based sessions (SRS §9.4).

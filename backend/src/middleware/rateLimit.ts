@@ -13,6 +13,23 @@ export const baseLimiter = rateLimit({
   },
 });
 
+/**
+ * Tighter limiter for comment-mutating endpoints (POST/PATCH/DELETE) on top
+ * of `baseLimiter`, so a single account/IP can't spam a comment thread
+ * (NFR-SEC-07).
+ */
+export const commentLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    status: 429,
+    code: "RATE_LIMITED",
+    safeMessage: "Too many comment actions. Please slow down.",
+  },
+});
+
 /** Tighter limiter for auth endpoints (NFR-SEC-07). */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -25,3 +42,4 @@ export const authLimiter = rateLimit({
     safeMessage: "Too many auth requests. Please try again later.",
   },
 });
+

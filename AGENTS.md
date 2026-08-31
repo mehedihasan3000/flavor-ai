@@ -7,13 +7,16 @@ shapes), `TASKS.md` (living roadmap — tick boxes as work completes).
 
 ## Repo Layout
 
-Monorepo with **two independent packages, no shared workspace build**:
+Monorepo, **two independent packages** (no shared workspace build, no root
+`package.json`). Run commands from the package dir.
 
-- `frontend/` — Next.js (App Router, TS, Tailwind v4, Better Auth, Gravity UI Icons)
-- `backend/` — Express 4 REST API (TS strict, ESM/NodeNext, Mongoose, Zod, JWT)
-
-Own scripts per package. Run commands from the package dir — there is no root
-`package.json`.
+- `frontend/` — Next.js App Router, TS strict, Tailwind v4 CSS-first (`@theme`
+  tokens in `src/app/globals.css`), **React Compiler enabled**, `@gravity-ui/icons`.
+  Routes in `src/app`, UI primitives in `src/components/ui` (barrel `index.ts`),
+  typed API client in `src/lib/{api,types}.ts`.
+- `backend/` — Express 4 REST API, TS strict, ESM/NodeNext, Mongoose, Zod, JWT.
+  Routers mount in `src/routes/v1.ts`; handlers in `src/controllers`, logic in
+  `src/services` (`aiService`, `imageService`); tests in `tests/`.
 
 ## Commands
 
@@ -25,7 +28,7 @@ Backend (`backend/`):
 - `npm test` — Vitest (unit + supertest), tests in `backend/tests/`
 - `npm run format` / `format:check` — Prettier
 
-Frontend (`frontend/`): `npm run dev`, `npm run build`, `npm run lint` (next).
+Frontend (`frontend/`): `npm run dev`, `npm run build`, `npm run lint`.
 
 Verification order that matters: `npm run build` → `npm run lint` → `npm test`.
 For a single test file: `npx vitest run tests/types.test.ts`.
@@ -35,8 +38,7 @@ For a single test file: `npx vitest run tests/types.test.ts`.
 - **`backend/.env` is required before ANY backend command** (incl. `npm test`).
   `src/config/env.ts` validates env with Zod and calls `process.exit(1)` at import
   time if anything is missing/invalid — so a fresh clone with no `.env` hard-crashes.
-  Copy `backend/.env.example` → `.env`; it holds the real MongoDB Atlas URI.
-  `.env` is gitignored; never commit or log it.
+  Copy `backend/.env.example` → `.env`. `.env` is gitignored; never commit or log it.
 - Node `>=20`. NodeNext ESM: **relative imports need a `.js` extension**
   (e.g. `import { env } from "./config/env.js"`). Dropping it breaks `npm run build`.
 - Frontend: `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api/v1`) via
@@ -45,14 +47,14 @@ For a single test file: `npx vitest run tests/types.test.ts`.
 ## Architecture Notes
 
 - **The API contract is FROZEN.** `backend/src/types/index.ts` is the executable
-  source of truth (Zod schemas + enums + DTOs); `docs/API_CONTRACT.md` mirrors it.
-  Do NOT change shapes without Team Lead sign-off. Build new controllers against
-  these schemas, don't re-declare types.
-- Only M1 exists so far: server, DB config, all 6 Mongoose models (User, Recipe,
-  Rating, Comment, Favorite, AIGenerationLog) with indexes, error handler, rate
-  limit, `/api/v1/health`. **Controllers/services for auth, recipes, AI, ratings,
-  comments, favorites, admin are not built yet** — M2–M5 mount their routers in
-  `backend/src/routes/v1.ts`.
+  source of truth (Zod schemas + enums + DTOs); `docs/API_CONTRACT.md` mirrors it,
+  and `frontend/src/lib/types.ts` mirrors both. Do NOT change shapes without Team
+  Lead sign-off — keep all three in sync when a change is approved.
+- All six domains are implemented (M1–M5 merged through M4): auth/user/recipe/AI/
+  ratings/comments/favorites/admin/upload controllers + routers under
+  `routes/v1.ts`, plus middleware `auth.ts` (JWT bridge), `validate.ts` (Zod),
+  `sanitizeInput.ts`, `rateLimit.ts` / `rateLimiters.ts`. Remaining repo work is
+  integration/testing/deployment — check TASKS.md for live status.
 - Every response must use the error envelope `{ status, code, safeMessage, validation? }`.
   `src/middleware/errorHandler.ts` maps `ZodError` → 400, `ApiError` → its status, and
   Mongoose duplicate-key (E11000) → 409 `CONFLICT`.
@@ -64,6 +66,31 @@ For a single test file: `npx vitest run tests/types.test.ts`.
   recipe+createdAt (Comment), user+createdAt (AIGenerationLog).
 - `autoIndex` is disabled in production (`config/db.ts`) — deploy step must create
   indexes (e.g. `syncIndexes()`) before release.
+
+## Frontend Gotchas (each one broke a real build)
+
+- **React Compiler + react-hooks v7 forbid setState synchronously reachable from
+  effect bodies** (even via called helper functions). For fetch-on-mount, set state
+  inside promise callbacks (`.then/.catch`), never via an async wrapper called from
+  the effect body. Lint fails the build otherwise.
+- **RSC boundary:** plain functions/styles cannot be exported from `"use client"`
+  files and used by server components. Server-safe style helpers live in their own
+  module (e.g. `ui/button-styles.ts`), not inside client component files.
+- `next.config.ts` pins `turbopack.root` — do not remove. Without it Next.js
+  mis-infers the workspace root and scatters `.next` caches (e.g. a stray nested
+  `frontend/frontend/.next`). Such dirs are generated junk: safe to delete once no
+  node process holds them; eslint ignores `**/.next/**` at any depth.
+- Contract nuance: profile/preferences PATCH must send the **FULL**
+  `DietaryPreferences` object — omitted arrays reset to `[]` server-side.
+- Client `ApiError` (`lib/api.ts`) exposes the envelope's safe text as `.message`;
+  never surface raw network/provider errors in UI.
+- Gravity icons: import names are non-obvious (`Xmark`, `Person`, `House`,
+  `TriangleExclamation` — no `X`/`User`/`Home` aliases). Check the package exports
+  before importing.
+- Accessibility AA convention: small text sitting on solid orange/green fills uses
+  `-strong`/`-deep` token variants; pure `primary`/`secondary` are reserved for
+  large text and accents. Icons never carry meaning alone (visible text or
+  accessible name required).
 
 ## Domain Rules (must enforce in backend)
 
@@ -82,14 +109,14 @@ For a single test file: `npx vitest run tests/types.test.ts`.
 ## Auth Bridge (CRITICAL)
 
 Better Auth handles client auth/session; the Express API receives signed Bearer
-JWTs. `middleware/auth.ts` verifies signature → `req.user`, rejects
-expired/malformed/unauthorized. Secrets never reach browser JS; prefer secure,
-HTTP-only, SameSite cookies. Passwords (if used) hashed, never returned.
-Issuer/audience/expiry/refresh/logout policy per SRS §9.4 (to be finalized in M2).
+JWTs. `middleware/auth.ts` verifies signature → `req.user`, rejecting
+expired/malformed/unauthorized tokens. Secrets never reach browser JS; prefer
+secure, HTTP-only, SameSite cookies. Passwords (if used) hashed, never returned.
+Issuer/audience/expiry/refresh/logout policy per SRS §9.4.
 
 ## AI Rules
 
-- Groq models `llama-3.3-70b-versatile` / `mixtral-8x7b-32768`. Constrained prompts
+- Groq models `openai/gpt-oss-120b` / `qwen/qwen3.6-27b`. Constrained prompts
   enforcing strict JSON; **server-side Zod-validate ALL AI output — invalid output
   must NOT be stored** (FR-AI-07). On provider failure/timeout return a safe,
   retryable error, never leak internals (FR-AI-08). Timeout ≤30s. Pantry matching:
@@ -97,36 +124,18 @@ Issuer/audience/expiry/refresh/logout policy per SRS §9.4 (to be finalized in M
 
 ## Team Workflow with opencode
 
-5 members, parallel. Roles/tasks live in `TASKS.md`; API shapes in
-`docs/API_CONTRACT.md`. Each member opens opencode in the repo root and prompts
-against these files (opencode reads AGENTS.md, TASKS.md, and the contract
-automatically). Members work on `feature/<name>` branches off `develop`; Lead
-merges in order **M1 → M2/M3/M4 → M5**. End every task by ticking TASKS.md and
-logging a dated note.
-
-**Prompt template:**
-
-```
-I'm [M#] working on Workstream [M# — name] from TASKS.md.
-I'll follow docs/API_CONTRACT.md and AGENTS.md rules.
-Build: [feature + FR refs]
-Implement: [files to create/change]
-Constraints: [ownership on backend, Zod on all input, etc.]
-Verify: run [test/lint command] and report results.
-When done, tick the completed tasks in TASKS.md and log a note.
-```
-
-Per-member prompts (M1 done): M2 — auth bridge (`middleware/auth.ts`, auth/user
-controllers, sign-in/sign-up pages, FR-AUTH-04..07). M3 — recipe CRUD + Groq
-`aiService` + Zod-validated output + pantry matching + flavor pairing + ImgBB
-`imageService` + generator page. M4 — ratings/comments/favorites/admin
-controllers, draft/hidden exclusion from search, discovery/favorites/admin pages.
-M5 — global layout (glassmorphism), landing + profile pages, all form/states +
-WCAG 2.1 AA, responsive ≥320px.
+5 members, parallel workstreams owned per TASKS.md; API shapes in
+`docs/API_CONTRACT.md`. Members work on `feature/<name>` branches off `develop`;
+Lead merges in order **M1 → M2/M3/M4 → M5**. When prompted, expect the member to
+state their workstream, target files, constraints, and a verification command.
+End every task by ticking TASKS.md and logging a dated `[YYYY-MM-DD] [M#]` note.
+Commit style (match history): conventional commits scoped by workstream, e.g.
+`feat(m5): …`, `chore(backend): …`.
 
 ## Workflow Rules
 
 - Update TASKS.md (living roadmap) when you complete work; log dated notes.
 - Do not commit unless explicitly asked.
 - After saving any opencode config change, remind the user to restart opencode.
-- Keep `backend/src/types/index.ts` and `docs/API_CONTRACT.md` in sync.
+- Keep `backend/src/types/index.ts`, `docs/API_CONTRACT.md`, and
+  `frontend/src/lib/types.ts` in sync.
