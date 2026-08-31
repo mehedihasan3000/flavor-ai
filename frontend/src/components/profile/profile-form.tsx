@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Person } from "@gravity-ui/icons";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError, getMyProfile, updateMyProfile } from "@/lib/api";
+import { ApiError, getMyProfile, updateMyProfile, uploadImage } from "@/lib/api";
 import type {
   Difficulty,
   DietaryLabel,
@@ -127,7 +127,7 @@ function validate(form: FormState): FieldErrors {
 }
 
 export function ProfileForm({ token: explicitToken }: { token?: string }) {
-  const { token: authContextToken, isLoading: isAuthLoading } = useAuth();
+  const { token: authContextToken, isLoading: isAuthLoading, patchUser } = useAuth();
   const token = explicitToken ?? authContextToken;
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -141,6 +141,15 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
     null,
   );
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
+  const [avatarPreviewFailed, setAvatarPreviewFailed] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset preview error when URL changes (e.g. after Google login or manual edit)
+  useEffect(() => {
+    Promise.resolve().then(() => setAvatarPreviewFailed(false));
+  }, [form.avatarUrl]);
 
   const loadProfile = useCallback(
     (signal?: AbortSignal) => {
@@ -199,6 +208,55 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
     }));
   };
 
+  // ── Avatar image upload (mirrors recipe-form.tsx:257-290) ──────────────────
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarUploadError("Image must be under 5 MB.");
+      e.target.value = "";
+      return;
+    }
+    if (!token) {
+      setAvatarUploadError("Please sign in to upload images.");
+      e.target.value = "";
+      return;
+    }
+    setAvatarUploadError(null);
+    setUploadingAvatar(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64 = ev.target?.result as string;
+        try {
+          const result = await uploadImage(base64, file.type, file.name, { token });
+          setField("avatarUrl", result.url);
+          setFieldErrors((prev) => {
+            const next = { ...prev };
+            delete next.avatarUrl;
+            return next;
+          });
+        } catch (err) {
+          if (err instanceof ApiError) setAvatarUploadError(err.message);
+          else setAvatarUploadError("Upload failed. Please try again.");
+        } finally {
+          setUploadingAvatar(false);
+          e.target.value = "";
+        }
+      };
+      reader.onerror = () => {
+        setAvatarUploadError("Failed to read file.");
+        setUploadingAvatar(false);
+        e.target.value = "";
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setAvatarUploadError("Failed to read file.");
+      setUploadingAvatar(false);
+      e.target.value = "";
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const errors = validate(form);
@@ -238,6 +296,7 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
       const updated = await updateMyProfile(payload, { token });
       setProfile(updated);
       setForm(profileToForm(updated));
+      patchUser({ name: updated.name, avatarUrl: updated.avatarUrl ?? null });
       setFormAlert({ variant: "success", message: "Your profile has been updated." });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -306,27 +365,112 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
         <Card className="p-6 sm:p-8">
           <h2 className="text-lg font-semibold text-heading">Basic information</h2>
           <div className="mt-5 grid gap-5">
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Input
-                label="Display name"
-                required
-                maxLength={100}
-                autoComplete="name"
-                value={form.name}
-                error={fieldErrors.name}
-                onChange={(event) => setField("name", event.target.value)}
-                disabled={saving}
-              />
-              <Input
-                label="Avatar URL"
-                type="url"
-                placeholder="https://example.com/avatar.jpg"
-                value={form.avatarUrl}
-                error={fieldErrors.avatarUrl}
-                onChange={(event) => setField("avatarUrl", event.target.value)}
-                disabled={saving}
-              />
+            <Input
+              label="Display name"
+              required
+              maxLength={100}
+              autoComplete="name"
+              value={form.name}
+              error={fieldErrors.name}
+              onChange={(event) => setField("name", event.target.value)}
+              disabled={saving}
+            />
+
+            {/* Avatar — preview + URL + file upload (mirrors recipe-form.tsx:257-290) */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-4">
+                <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-neutral-100">
+                  {form.avatarUrl.trim() && !avatarPreviewFailed ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={form.avatarUrl.trim()}
+                      alt="Avatar preview"
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarPreviewFailed(true)}
+                    />
+                  ) : (
+                    <Person className="size-8 text-muted-foreground" aria-hidden="true" />
+                  )}
+                  {form.avatarUrl.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setField("avatarUrl", "");
+                        setAvatarUploadError(null);
+                        if (avatarInputRef.current) avatarInputRef.current.value = "";
+                      }}
+                      className="absolute right-0.5 top-0.5 flex size-6 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow hover:bg-white hover:text-neutral-900"
+                      aria-label="Remove avatar"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-heading">Profile photo</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Upload a file or paste an image URL. JPG, PNG, WEBP or GIF — max 5 MB.
+                  </p>
+                  {form.avatarUrl.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setField("avatarUrl", "");
+                        setAvatarUploadError(null);
+                        if (avatarInputRef.current) avatarInputRef.current.value = "";
+                      }}
+                      className="text-xs font-medium text-danger-strong hover:underline"
+                    >
+                      Remove photo
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <Input
+                    label="Avatar URL"
+                    type="url"
+                    placeholder="https://example.com/avatar.jpg"
+                    value={form.avatarUrl}
+                    error={fieldErrors.avatarUrl}
+                    onChange={(event) => {
+                      setField("avatarUrl", event.target.value);
+                      setAvatarUploadError(null);
+                    }}
+                    disabled={saving || uploadingAvatar}
+                    hint="Paste an external image URL, or upload a file →"
+                  />
+                </div>
+                <div className="flex shrink-0 flex-col">
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="sr-only"
+                    aria-label="Upload avatar image"
+                    onChange={handleAvatarFile}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={uploadingAvatar || saving}
+                    className="w-full sm:w-auto"
+                  >
+                    {uploadingAvatar ? "Uploading..." : "Upload Image"}
+                  </Button>
+                </div>
+              </div>
+              {avatarUploadError && (
+                <p className="text-xs font-medium text-red-600" role="alert">
+                  {avatarUploadError}
+                </p>
+              )}
             </div>
+
             <Textarea
               label="Bio"
               maxLength={500}

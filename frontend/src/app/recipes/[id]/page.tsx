@@ -37,6 +37,7 @@ import {
   ErrorState,
   LoadingState,
 } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
 import { AuthPrompt } from "@/components/auth";
 import { NutritionBadge } from "@/components/recipes/nutrition-badge";
 import { RatingStars } from "@/components/recipes/rating-stars";
@@ -50,6 +51,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const { id } = use(params);
   const router = useRouter();
   const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const toast = useToast();
 
   // Recipe load state
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -237,17 +239,18 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
           ? await unpublishRecipe(recipe.id, { token })
           : await publishRecipe(recipe.id, { token });
       setRecipe(updated);
-      setActionSuccess(
+      const successMsg =
         updated.status === "published"
           ? "Recipe is now published!"
-          : "Recipe has been unpublished and moved to drafts.",
-      );
+          : "Recipe has been unpublished and moved to drafts.";
+      setActionSuccess(successMsg);
+      toast.success(successMsg, {
+        title: updated.status === "published" ? "Published" : "Unpublished",
+      });
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message);
-      } else {
-        setActionError("Action failed. Please try again.");
-      }
+      const msg = err instanceof ApiError ? err.message : "Action failed. Please try again.";
+      setActionError(msg);
+      toast.error(msg, { title: "Update failed" });
     } finally {
       setActionLoading(false);
     }
@@ -260,13 +263,12 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
 
     try {
       await deleteRecipe(recipe.id, { token });
+      toast.success(`"${recipe.title}" was deleted.`, { title: "Recipe deleted" });
       router.push("/");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message);
-      } else {
-        setActionError("Failed to delete recipe.");
-      }
+      const msg = err instanceof ApiError ? err.message : "Failed to delete recipe.";
+      setActionError(msg);
+      toast.error(msg, { title: "Delete failed" });
       setShowDeleteModal(false);
       setActionLoading(false);
     }
@@ -303,6 +305,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const defaultServings = recipe.servings || 1;
   const scalingRatio = servingsScale / defaultServings;
   const isOwner = Boolean(user && recipe.owner === user.id);
+  const isAdmin = user?.role === "admin";
+  const isOwnerOrAdmin = isOwner || isAdmin;
   const myRating = ratingSummary?.myRating ?? null;
 
   return (
@@ -322,8 +326,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
         </span>
       </nav>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
+      {/* Delete Confirmation Modal — only reachable when owner/admin toolbar is visible */}
+      {showDeleteModal && isOwnerOrAdmin && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
@@ -535,45 +539,47 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
             </div>
           )}
 
-          {/* Owner Action Toolbar */}
+          {/* Owner/Admin Action Toolbar — visible only to recipe owner or admin (FR-RECIPE-06) */}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-6">
             <div className="text-xs text-neutral-500">
               Created {new Date(recipe.createdAt).toLocaleDateString()}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href={`/recipes/${recipe.id}/edit`}>
-                <Button type="button" variant="outline" size="sm">
-                  <Pencil className="h-3.5 w-3.5" />
-                  <span>Edit Recipe</span>
+            {isOwnerOrAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/recipes/${recipe.id}/edit`}>
+                  <Button type="button" variant="outline" size="sm">
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>Edit Recipe</span>
+                  </Button>
+                </Link>
+
+                <Button
+                  type="button"
+                  variant={isPublished ? "secondary" : "primary"}
+                  size="sm"
+                  onClick={handleTogglePublish}
+                  disabled={actionLoading}
+                >
+                  {actionLoading
+                    ? "Updating..."
+                    : isPublished
+                    ? "Unpublish"
+                    : "Publish Recipe"}
                 </Button>
-              </Link>
 
-              <Button
-                type="button"
-                variant={isPublished ? "secondary" : "primary"}
-                size="sm"
-                onClick={handleTogglePublish}
-                disabled={actionLoading}
-              >
-                {actionLoading
-                  ? "Updating..."
-                  : isPublished
-                  ? "Unpublish"
-                  : "Publish Recipe"}
-              </Button>
-
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={() => setShowDeleteModal(true)}
-                disabled={actionLoading}
-              >
-                <TrashBin className="h-3.5 w-3.5" />
-                <span>Delete</span>
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setShowDeleteModal(true)}
+                  disabled={actionLoading}
+                >
+                  <TrashBin className="h-3.5 w-3.5" />
+                  <span>Delete</span>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </Card>

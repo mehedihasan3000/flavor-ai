@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeSlash, Flame, Person } from "@gravity-ui/icons";
 import { useAuth } from "@/lib/auth-context";
 import { Alert, Button, Card, Input } from "@/components/ui";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 function SignUpContent() {
   const router = useRouter();
@@ -148,6 +149,17 @@ function SignUpContent() {
             Create account
           </Button>
         </form>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground font-medium">Or continue with</span>
+          </div>
+        </div>
+
+        <GoogleSignInButton text="signup_with" redirectTo="/profile" disabled={loading} onError={setError} />
       </Card>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeSlash, Flame, Lock, Person } from "@gravity-ui/icons";
 import { useAuth } from "@/lib/auth-context";
 import { Alert, Button, Card, Input } from "@/components/ui";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 function SignInContent() {
   const router = useRouter();
@@ -131,6 +132,17 @@ function SignInContent() {
             Sign in
           </Button>
         </form>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground font-medium">Or continue with</span>
+          </div>
+        </div>
+
+        <GoogleSignInButton text="signin_with" disabled={loading} onError={setError} />
 
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
