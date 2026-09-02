@@ -176,6 +176,7 @@ contract had no endpoint.
 |--------|------|------|-------------|
 | POST | `/ai/recipes/generate` | required | Generate recipe from pantry + preferences (FR-AI-01..08) |
 | POST | `/ai/flavor-pairings` | required | Complementary ingredients/substitutions (FR-FLAVOR) |
+| POST | `/ai/nutrition/analyze-photo` | required | Analyze food photo for nutrition estimation (FR-PHOTO-01..04) |
 
 **`POST /ai/recipes/generate` body** (`AIRecipePromptInput`):
 ```json
@@ -212,6 +213,37 @@ contract had no endpoint.
 { "ingredient": "chicken breast", "preferences": { "dietaryLabels": ["gluten-free"] } }
 ```
 → 200 `{ suggestions: [{ ingredient, reason, type: "addition"|"substitution" }] }`
+
+**`POST /ai/nutrition/analyze-photo` body** (`FoodPhotoAnalysisInput`):
+```json
+{
+  "image": "data:image/jpeg;base64,... OR https://...",
+  "mimeType": "image/jpeg",
+  "mealContext": "Homemade dinner plate"
+}
+```
+→ 200 `FoodPhotoAnalysisResult`:
+```json
+{
+  "dishName": "Grilled Lemon Salmon with Roasted Asparagus",
+  "summary": "Visual analysis detects grilled salmon fillet, roasted asparagus spears, and olive oil dressing.",
+  "detectedFoods": [
+    { "name": "Grilled Salmon", "portion": "150g fillet", "confidence": "high", "calories": 280, "proteinGrams": 34, "carbsGrams": 0, "fatGrams": 15, "fiberGrams": 0 }
+  ],
+  "totalNutrition": {
+    "calories": { "min": 320, "max": 400, "estimate": 360 },
+    "proteinGrams": { "min": 32, "max": 38, "estimate": 35 },
+    "carbsGrams": { "min": 4, "max": 8, "estimate": 6 },
+    "fatGrams": { "min": 18, "max": 24, "estimate": 21 }
+  },
+  "macroDistribution": { "proteinPercentage": 39, "carbsPercentage": 7, "fatPercentage": 54 },
+  "dietaryTags": ["high-protein", "gluten-free", "keto"],
+  "allergenWarnings": ["Fish"],
+  "healthInsights": ["Rich in lean protein and heart-healthy Omega-3 fatty acids."],
+  "suggestedIngredientsForRecipe": ["salmon fillet", "asparagus", "olive oil", "lemon"],
+  "disclaimer": "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice."
+}
+```
 
 **Failure handling:** timeout ≤30s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable.
 

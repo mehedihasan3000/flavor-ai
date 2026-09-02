@@ -151,6 +151,58 @@ export interface FlavorPairingSuggestion {
   type: "addition" | "substitution";
 }
 
+// ---------------------------------------------------------------------------
+// Food Photo Nutrition Analysis (FR-PHOTO-01..04)
+// ---------------------------------------------------------------------------
+
+export interface NutritionRange {
+  min: number;
+  max: number;
+  estimate: number;
+}
+
+export interface DetectedFoodItem {
+  name: string;
+  portion: string;
+  confidence: "high" | "medium" | "low";
+  calories: number;
+  proteinGrams: number;
+  carbsGrams: number;
+  fatGrams: number;
+  fiberGrams?: number;
+}
+
+export interface FoodPhotoAnalysisInput {
+  image: string;
+  mimeType?: string;
+  filename?: string;
+  mealContext?: string;
+  notes?: string;
+}
+
+export interface FoodPhotoAnalysisResult {
+  dishName: string;
+  summary: string;
+  detectedFoods: DetectedFoodItem[];
+  totalNutrition: {
+    calories: NutritionRange;
+    proteinGrams: NutritionRange;
+    carbsGrams: NutritionRange;
+    fatGrams: NutritionRange;
+    fiberGrams?: NutritionRange;
+  };
+  macroDistribution: {
+    proteinPercentage: number;
+    carbsPercentage: number;
+    fatPercentage: number;
+  };
+  dietaryTags: DietaryLabel[];
+  allergenWarnings: string[];
+  healthInsights: string[];
+  suggestedIngredientsForRecipe: string[];
+  disclaimer: string;
+}
+
 export interface CreateRecipeInput {
   title: string;
   slug: string;
