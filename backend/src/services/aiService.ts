@@ -3,14 +3,17 @@ import { AIGenerationLogModel } from "../models/AIGenerationLog.js";
 import {
   AIRecipeOutputSchema,
   FlavorPairingSuggestionSchema,
+  FoodPhotoAnalysisResult,
   type AIRecipeOutput,
   type AIRecipePromptInput,
   type FlavorPairingInput,
   type FlavorPairingSuggestion,
+  type FoodPhotoAnalysisInput,
   type IngredientInput,
   type PantryMatchResult,
   type RecipeIngredient,
 } from "../types/index.js";
+import { validateImageInput } from "./imageService.js";
 import { ApiError } from "../utils/ApiError.js";
 import { z } from "zod";
 
@@ -201,8 +204,18 @@ CRITICAL INSTRUCTIONS:
  */
 function cleanJsonResponse(raw: string): string {
   let cleaned = raw.trim();
+  // Strip extended-thinking <think>...</think> blocks emitted by reasoning models
+  // (e.g. qwen/qwen3.6-27b). The block can be enormous, so strip greedily.
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  // Strip markdown code fences
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  }
+  // Extract the first {...} JSON object if there is any leading/trailing prose
+  const jsonStart = cleaned.indexOf("{");
+  const jsonEnd = cleaned.lastIndexOf("}");
+  if (jsonStart !== -1 && jsonEnd > jsonStart) {
+    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
   }
   return cleaned.trim();
 }
@@ -530,3 +543,363 @@ export async function generateFlavorPairings(
 
   return { suggestions: validationResult.data.suggestions };
 }
+
+/**
+ * Constructs prompt for food photo visual analysis and nutrition estimation.
+ * (FR-PHOTO-01..04, FR-NUTR-01..03)
+ */
+export function buildFoodPhotoAnalysisPrompt(
+  mealContext?: string,
+  notes?: string,
+): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const systemPrompt = `You are FlavorAI Food Vision & Nutrition Analyst, a certified nutritional biochemist and master culinary analysis engine.
+Your task is to analyze the provided food photo or meal image with high accuracy, detecting foods/ingredients, estimating portion sizes, and computing nutritional values.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with ONLY a valid, raw JSON object. Do not include markdown code block formatting (e.g. no \`\`\`json).
+2. The JSON object must strictly match this exact structure:
+{
+  "dishName": "Grilled Salmon with Asparagus and Quinoa",
+  "summary": "Grilled salmon fillet served with tender asparagus spears and seasoned quinoa.",
+  "detectedFoods": [
+    {
+      "name": "Grilled Salmon Fillet",
+      "portion": "150g fillet",
+      "confidence": "high",
+      "calories": 280,
+      "proteinGrams": 34,
+      "carbsGrams": 0,
+      "fatGrams": 15,
+      "fiberGrams": 0
+    }
+  ],
+  "totalNutrition": {
+    "calories": { "min": 320, "max": 400, "estimate": 360 },
+    "proteinGrams": { "min": 32, "max": 38, "estimate": 35 },
+    "carbsGrams": { "min": 4, "max": 8, "estimate": 6 },
+    "fatGrams": { "min": 18, "max": 24, "estimate": 21 },
+    "fiberGrams": { "min": 0, "max": 2, "estimate": 1 }
+  },
+  "macroDistribution": {
+    "proteinPercentage": 39,
+    "carbsPercentage": 7,
+    "fatPercentage": 54
+  },
+  "dietaryTags": ["high-protein", "gluten-free"],
+  "allergenWarnings": ["Fish"],
+  "healthInsights": ["High in bioavailable lean protein and heart-healthy Omega-3 fatty acids."],
+  "suggestedIngredientsForRecipe": ["salmon fillet", "asparagus", "olive oil", "lemon"],
+  "disclaimer": "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice."
+}
+3. macroDistribution percentages MUST sum to approximately 100%.
+4. Allowed dietaryTags: "vegetarian", "vegan", "halal", "gluten-free", "dairy-free", "high-protein", "low-carb", "keto".`;
+
+  const details: string[] = [
+    "Analyze this food photo. Estimate nutrition, detect ingredients, and calculate macros.",
+  ];
+  if (mealContext?.trim()) {
+    details.push(`User Meal Context: ${mealContext.trim()}`);
+  }
+  if (notes?.trim()) {
+    details.push(`User Notes: ${notes.trim()}`);
+  }
+  details.push("Output the analysis strictly as a valid JSON object matching the required schema.");
+
+  const userPrompt = details.join("\n");
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * Analyzes food photo to estimate nutrition and breakdown ingredients.
+ * (FR-PHOTO-01..04)
+ */
+export async function analyzeFoodPhoto(
+  input: FoodPhotoAnalysisInput,
+  userId?: string,
+): Promise<FoodPhotoAnalysisResult> {
+  const apiKey = env.GROQ_API_KEY;
+  if (!apiKey || apiKey === "change-me") {
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI service key is not configured.");
+  }
+
+  // Format image URL or validated data URL
+  let formattedImageUrl = input.image;
+  if (!input.image.startsWith("http://") && !input.image.startsWith("https://")) {
+    if (!input.image.startsWith("data:")) {
+      const mime = input.mimeType || "image/jpeg";
+      // Validate file size and mime
+      validateImageInput({
+        base64Data: input.image,
+        mimeType: mime,
+        filename: input.filename,
+      });
+      formattedImageUrl = `data:${mime};base64,${input.image}`;
+    } else {
+      const mime = input.image.split(";")[0]?.replace("data:", "") || "image/jpeg";
+      validateImageInput({
+        base64Data: input.image,
+        mimeType: mime,
+        filename: input.filename,
+      });
+    }
+  }
+
+  const { systemPrompt, userPrompt } = buildFoodPhotoAnalysisPrompt(
+    input.mealContext,
+    input.notes,
+  );
+
+  const primaryModel = env.GROQ_MODEL_FOR_IMAGE || "qwen/qwen3.6-27b";
+  // Fallback vision models — only active Groq vision-capable models.
+  // llama-3.2-90b-vision-preview: decommissioned Sep 2025.
+  // meta-llama/llama-4-scout-17b-16e-instruct: not available on this API key tier.
+  const candidateModels = [
+    primaryModel,
+    "qwen/qwen3.8-27b",
+    "llama-3.2-11b-vision-preview",
+    "llama-3.2-90b-vision-preview",
+  ].filter((m, i, arr) => arr.indexOf(m) === i);
+
+  const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), env.AI_REQUEST_TIMEOUT_MS);
+
+  let rawResponseText = "";
+  let successfulModel = primaryModel;
+  let lastErrorMessage = "";
+
+  try {
+    for (const model of candidateModels) {
+      // First attempt with response_format json_object; if 400 json_validate_failed, retry without constraint
+      for (const useJsonFormat of [true, false]) {
+        try {
+          const bodyPayload: Record<string, unknown> = {
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: userPrompt },
+                  { type: "image_url", image_url: { url: formattedImageUrl } },
+                ],
+              },
+            ],
+            temperature: 0,      // deterministic output reduces token waste on reasoning
+            max_tokens: 2048,     // cap prevents reasoning models (qwen) consuming entire budget on <think>
+          };
+
+          if (useJsonFormat) {
+            bodyPayload.response_format = { type: "json_object" };
+          }
+
+          const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            signal: controller.signal,
+            body: JSON.stringify(bodyPayload),
+          });
+
+          if (res.ok) {
+            const data = (await res.json()) as {
+              choices?: Array<{ message?: { content?: string } }>;
+            };
+            rawResponseText = data.choices?.[0]?.message?.content ?? "";
+            console.log(`\n[aiService] === RAW AI RESPONSE (model: ${model}) ===\n${rawResponseText}\n[aiService] ========================================\n`);
+            if (rawResponseText.trim()) {
+              successfulModel = model;
+              break;
+            }
+          } else {
+            const errBody = await res.text().catch(() => "");
+            lastErrorMessage = `[${model}] HTTP ${res.status}: ${errBody}`;
+            // If json_validate_failed, try next loop without response_format constraint
+            if (res.status === 400 && errBody.includes("json_validate_failed") && useJsonFormat) {
+              continue;
+            }
+          }
+        } catch (fetchErr) {
+          if ((fetchErr as Error)?.name === "AbortError") throw fetchErr;
+          lastErrorMessage = (fetchErr as Error)?.message || "Network error";
+        }
+      }
+
+      if (rawResponseText.trim()) {
+        break;
+      }
+    }
+
+    clearTimeout(timeoutId);
+
+    if (!rawResponseText.trim()) {
+      console.error(`[aiService] Food photo analysis failed across candidate models: ${lastErrorMessage}`);
+      const latencyMs = Date.now() - startTime;
+      await logAIGeneration({
+        userId,
+        input: { mealContext: input.mealContext, filename: input.filename },
+        model: primaryModel,
+        status: "failed",
+        latencyMs,
+        errorCategory: "provider_error",
+      });
+      throw new ApiError(
+        502,
+        "AI_PROVIDER_ERROR",
+        "Food photo nutrition analysis service unavailable. Please try again.",
+      );
+    }
+  } catch (err: unknown) {
+    clearTimeout(timeoutId);
+    const latencyMs = Date.now() - startTime;
+
+    if (err instanceof ApiError) throw err;
+
+    const isTimeout =
+      (err as Error)?.name === "AbortError" ||
+      (err as Error)?.message?.includes("aborted");
+
+    await logAIGeneration({
+      userId,
+      input: { mealContext: input.mealContext, filename: input.filename },
+      model: primaryModel,
+      status: isTimeout ? "timeout" : "failed",
+      latencyMs,
+      errorCategory: isTimeout ? "timeout" : "provider_error",
+    });
+
+    if (isTimeout) {
+      throw new ApiError(
+        504,
+        "AI_PROVIDER_ERROR",
+        "Food photo analysis request timed out. Please try again.",
+      );
+    }
+
+    throw new ApiError(
+      502,
+      "AI_PROVIDER_ERROR",
+      "AI service encountered an error while analyzing the image. Please try again.",
+    );
+  }
+
+  const latencyMs = Date.now() - startTime;
+  const cleanedJson = cleanJsonResponse(rawResponseText);
+  let parsedJson: unknown;
+
+  try {
+    parsedJson = JSON.parse(cleanedJson);
+  } catch {
+    await logAIGeneration({
+      userId,
+      input: { mealContext: input.mealContext, filename: input.filename },
+      model: successfulModel,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(
+      502,
+      "AI_PROVIDER_ERROR",
+      "AI returned invalid nutrition analysis data format.",
+    );
+  }
+
+  // Pre-normalize common model quirks before Zod validation
+  if (typeof parsedJson === "object" && parsedJson !== null) {
+    const rawObj = parsedJson as Record<string, unknown>;
+
+    // 1. Default disclaimer if missing or empty
+    if (!rawObj.disclaimer || typeof rawObj.disclaimer !== "string" || !rawObj.disclaimer.trim()) {
+      rawObj.disclaimer =
+        "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice.";
+    }
+
+    // 2. Default summary if missing
+    if (typeof rawObj.summary !== "string" || !rawObj.summary.trim()) {
+      rawObj.summary = "";
+    }
+
+    // 3. Compute macroDistribution from totalNutrition when missing or incomplete
+    const hasMacro =
+      rawObj.macroDistribution !== null &&
+      typeof rawObj.macroDistribution === "object" &&
+      typeof (rawObj.macroDistribution as Record<string, unknown>).proteinPercentage === "number";
+
+    if (!hasMacro && typeof rawObj.totalNutrition === "object" && rawObj.totalNutrition !== null) {
+      const tn = rawObj.totalNutrition as Record<string, Record<string, number>>;
+      const protein = (tn.proteinGrams?.estimate ?? 0) * 4;
+      const carbs = (tn.carbsGrams?.estimate ?? 0) * 4;
+      const fat = (tn.fatGrams?.estimate ?? 0) * 9;
+      const total = protein + carbs + fat || 1;
+      rawObj.macroDistribution = {
+        proteinPercentage: Math.round((protein / total) * 100),
+        carbsPercentage: Math.round((carbs / total) * 100),
+        fatPercentage: Math.round((fat / total) * 100),
+      };
+    }
+
+    // 4. Normalize dietaryTags — strip any values outside the allowed enum
+    const validLabels = new Set([
+      "vegetarian",
+      "vegan",
+      "halal",
+      "gluten-free",
+      "dairy-free",
+      "high-protein",
+      "low-carb",
+      "keto",
+    ]);
+    if (Array.isArray(rawObj.dietaryTags)) {
+      rawObj.dietaryTags = rawObj.dietaryTags
+        .map((t) => String(t).toLowerCase().trim())
+        .filter((t) => validLabels.has(t));
+    } else {
+      rawObj.dietaryTags = [];
+    }
+
+    // 5. Default empty arrays for other optional array fields
+    if (!Array.isArray(rawObj.allergenWarnings)) rawObj.allergenWarnings = [];
+    if (!Array.isArray(rawObj.healthInsights)) rawObj.healthInsights = [];
+    if (!Array.isArray(rawObj.suggestedIngredientsForRecipe))
+      rawObj.suggestedIngredientsForRecipe = [];
+  }
+
+  const validationResult = FoodPhotoAnalysisResult.safeParse(parsedJson);
+  if (!validationResult.success) {
+    console.error(
+      "[aiService] FoodPhotoAnalysisResult validation failed:",
+      validationResult.error.flatten(),
+    );
+    console.error("[aiService] Raw parsed JSON (post-normalization):", JSON.stringify(parsedJson));
+    await logAIGeneration({
+      userId,
+      input: { mealContext: input.mealContext, filename: input.filename },
+      model: successfulModel,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(
+      502,
+      "AI_PROVIDER_ERROR",
+      "AI food analysis output did not pass validation requirements.",
+    );
+  }
+
+  await logAIGeneration({
+    userId,
+    input: { mealContext: input.mealContext, filename: input.filename },
+    model: successfulModel,
+    status: "success",
+    latencyMs,
+  });
+
+  return validationResult.data;
+}
+

@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 
 const NAV_LINKS = [
   { href: "/generator", label: "Generator" },
+  { href: "/nutrition-analyzer", label: "Photo Nutrition" },
   { href: "/recipes", label: "Recipes" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/favorites", label: "Favorites" },

@@ -19,6 +19,8 @@ import type {
   FavoriteStatus,
   FlavorPairingInput,
   FlavorPairingSuggestion,
+  FoodPhotoAnalysisInput,
+  FoodPhotoAnalysisResult,
   PaginatedResult,
   PaginationQuery,
   PantryMatchResult,
@@ -252,6 +254,17 @@ export async function suggestFlavorPairings(
     body: input,
   });
   return { pairings: res.suggestions ?? [] };
+}
+
+export async function analyzeFoodPhoto(
+  input: FoodPhotoAnalysisInput,
+  options: RequestOptions = {},
+): Promise<FoodPhotoAnalysisResult> {
+  return request<FoodPhotoAnalysisResult>("/ai/nutrition/analyze-photo", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
 }
 
 export async function getRecipe(

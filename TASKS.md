@@ -195,7 +195,7 @@ integration gates (Section 6).
 ## Post-MVP (Deferred — not MVP scope)
 
 - [ ] Taste-profile recommendations (FR-TASTE-01..03)
-- [ ] Food-photo nutrition analysis (FR-PHOTO-01..04)
+- [x] Food-photo nutrition analysis (FR-PHOTO-01..04)
 - [ ] Meal planning, grocery lists, follows, notifications, social feeds
 - [ ] Verified nutrition datasets, multilingual support, native mobile apps
 
@@ -318,3 +318,17 @@ integration gates (Section 6).
      - All must-have SRS requirements and release criteria satisfied.
 - `[2026-08-26] [M5]` **Bug fix — Checkbox primitive unclickable square:** users could not select Dietary Restrictions on `/generator` because `ui/checkbox.tsx` rendered the visible styled square as a decorative `<span>` while the real `<input>` was `sr-only`; clicks on the square never reached the input (only clicking the text label worked). Reproduced with new regression test `frontend/tests/checkbox.test.tsx` (3 tests), fixed by converting the row container into a single wrapping `<label>` (whole row now toggles; inner label demoted to `<span>` to avoid nested labels; added `cursor-pointer`). Fix applies to every consumer (generator, profile-form). Frontend tests 18/18 ✓, lint ✓ (0 warnings), build ✓.
 - `[2026-08-26] [M5]` **Feature — homepage "From the community" now shows 3 featured recipes:** `app/page.tsx` `FeaturedRecipes` is an async server component fetching the 3 newest published recipes via `listRecipes({ sort: "newest", limit: 3 })` (try/catch → falls back to the existing EmptyState when the API is unreachable, keeping builds safe). Renders a responsive `RecipeCard` grid (`sm:grid-cols-2 lg:grid-cols-3`); EmptyState only when zero published recipes exist. Verified live: homepage renders 3 recipe links after publishing a third recipe. Lint ✓, build ✓, tests 23/23 ✓.
+- `[2026-09-01] [Lead]` **Feature: Food Photo Nutrition Analysis (FR-PHOTO-01..04) completed & verified:**
+  1. **API & Contract Definition:** Added `NutritionRange`, `DetectedFoodItem`, `FoodPhotoAnalysisInput`, and `FoodPhotoAnalysisResult` schemas in `backend/src/types/index.ts`, mirrored in `frontend/src/lib/types.ts` and `docs/API_CONTRACT.md`.
+  2. **AI Vision Service & Multimodal Pipeline:** Implemented `buildFoodPhotoAnalysisPrompt` and `analyzeFoodPhoto` in `backend/src/services/aiService.ts` utilizing multimodal vision models (`qwen/qwen3.6-27b` / `llama-3.2-11b-vision-preview` / Groq vision completions) with image payload handling (URL/base64), strict Zod parsing, error envelopes, and telemetry logging to `AIGenerationLog`.
+  3. **Backend API Endpoints:** Mounted `POST /api/v1/ai/nutrition/analyze-photo` behind `requireAuth`, `aiRateLimiter`, and input validation in `backend/src/controllers/aiController.ts` & `backend/src/routes/ai.ts`.
+  4. **Frontend Architecture & UX:**
+     - Added typed client method `analyzeFoodPhoto()` in `frontend/src/lib/api.ts`.
+     - Built `PhotoDropzone` (`frontend/src/components/nutrition/photo-dropzone.tsx`) with drag-and-drop, camera/file picker, preview removal, format & 5MB file-size validation, and 1-click sample dish presets for instant testing.
+     - Built `NutritionBreakdownView` (`frontend/src/components/nutrition/nutrition-breakdown-view.tsx`) displaying calories range, macronutrient distribution visual bar (Protein/Carbs/Fat %), detected food items table with confidence badges and portion estimates, dietary tags, allergen warnings, health insights, and "Turn Photo into Recipe" quick action link.
+     - Built interactive page `frontend/src/app/nutrition-analyzer/page.tsx` with AuthGuard, context/notes inputs, loading spinner states, and error alerts.
+     - Added "Photo Nutrition" link to navbar (`frontend/src/components/layout/navbar.tsx`) and hero CTA on homepage (`frontend/src/app/page.tsx`).
+  5. **Verification & Testing:**
+     - Backend: 12 new automated unit/integration tests in `backend/tests/foodPhotoNutrition.test.ts` (all 24 test files / 216 tests passing, 0 ESLint warnings, TypeScript build clean).
+     - Frontend: 4 new automated component/page tests in `frontend/tests/photoAnalyzer.test.tsx` (all 6 test files / 27 tests passing, 0 ESLint warnings, Next.js build clean with 18 prerendered routes).
+

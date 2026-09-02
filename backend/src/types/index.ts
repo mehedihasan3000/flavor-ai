@@ -207,6 +207,73 @@ export const FlavorPairingSuggestionSchema = z.object({
 export type FlavorPairingSuggestion = z.infer<typeof FlavorPairingSuggestionSchema>;
 
 // ---------------------------------------------------------------------------
+// Food Photo Nutrition Analysis (FR-PHOTO-01..04)
+// ---------------------------------------------------------------------------
+
+export const NutritionRange = z.object({
+  min: z.number().nonnegative(),
+  max: z.number().nonnegative(),
+  estimate: z.number().nonnegative(),
+});
+
+export type NutritionRange = z.infer<typeof NutritionRange>;
+
+export const DetectedFoodItem = z.object({
+  name: z.string().min(1).max(100),
+  portion: z.string().min(1).max(100),
+  confidence: z.enum(["high", "medium", "low"]).default("high"),
+  calories: z.number().nonnegative(),
+  proteinGrams: z.number().nonnegative(),
+  carbsGrams: z.number().nonnegative(),
+  fatGrams: z.number().nonnegative(),
+  fiberGrams: z.number().nonnegative().optional(),
+});
+
+export type DetectedFoodItem = z.infer<typeof DetectedFoodItem>;
+
+export const FoodPhotoAnalysisInput = z.object({
+  image: z.string().min(1, "Image data or URL is required"),
+  mimeType: z.string().optional(),
+  filename: z.string().optional(),
+  mealContext: z.string().max(200).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export type FoodPhotoAnalysisInput = z.infer<typeof FoodPhotoAnalysisInput>;
+
+export const FoodPhotoAnalysisResult = z.object({
+  dishName: z.string().min(2).max(120),
+  summary: z.string().max(600).default(""),
+  detectedFoods: z.array(DetectedFoodItem).min(1, "At least one food item must be detected"),
+  totalNutrition: z.object({
+    calories: NutritionRange,
+    proteinGrams: NutritionRange,
+    carbsGrams: NutritionRange,
+    fatGrams: NutritionRange,
+    fiberGrams: NutritionRange.optional(),
+  }),
+  macroDistribution: z
+    .object({
+      proteinPercentage: z.number().min(0).max(100),
+      carbsPercentage: z.number().min(0).max(100),
+      fatPercentage: z.number().min(0).max(100),
+    })
+    .optional()
+    .default({ proteinPercentage: 0, carbsPercentage: 0, fatPercentage: 0 }),
+  dietaryTags: z.array(z.enum(DIETARY_LABEL)).default([]),
+  allergenWarnings: z.array(z.string()).default([]),
+  healthInsights: z.array(z.string().max(250)).default([]),
+  suggestedIngredientsForRecipe: z.array(z.string().max(100)).default([]),
+  disclaimer: z
+    .string()
+    .default(
+      "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice.",
+    ),
+});
+
+export type FoodPhotoAnalysisResult = z.infer<typeof FoodPhotoAnalysisResult>;
+
+// ---------------------------------------------------------------------------
 // Pantry matching (FR-PANTRY-02/03)
 // ---------------------------------------------------------------------------
 
