@@ -24,6 +24,9 @@ export type RecipeCategory =
   | "baking"
   | "beverage";
 
+export type TasteProfile = "spicy" | "sweet" | "salty" | "sour" | "bitter" | "umami";
+export type TasteIntensity = "mild" | "medium" | "strong";
+
 export type CommentStatus = "visible" | "moderated";
 export type PantryMatchStatus = "used" | "missing" | "substitution";
 export type RecipeSort = "newest" | "highest-rated" | "most-popular";
@@ -149,6 +152,24 @@ export interface FlavorPairingSuggestion {
   ingredient: string;
   reason: string;
   type: "addition" | "substitution";
+}
+
+// ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03) — Additive (post-freeze)
+// ---------------------------------------------------------------------------
+
+export interface TasteMatchInput {
+  tastes: TasteProfile[];
+  intensity?: TasteIntensity;
+  notes?: string;
+  limit?: number;
+}
+
+export interface TasteMatchResult {
+  recipe: RecipeCardData;
+  score: number;
+  matchedTastes: TasteProfile[];
+  reason: string;
 }
 
 // ---------------------------------------------------------------------------

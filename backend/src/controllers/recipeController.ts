@@ -11,7 +11,7 @@ function isValidObjectId(value: string): boolean {
 }
 
 /** Serializes a Recipe doc into the frozen contract shape (docs/API_CONTRACT.md). */
-function toRecipeResponse(recipe: HydratedDocument<Recipe>) {
+export function toRecipeResponse(recipe: HydratedDocument<Recipe>) {
   return {
     id: recipe._id.toString(),
     owner: recipe.owner.toString(),

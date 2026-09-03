@@ -28,6 +28,8 @@ import type {
   RatingSummary,
   Recipe,
   RecipeSearchQuery,
+  TasteMatchInput,
+  TasteMatchResult,
   UpdateCommentInput,
   UpdateProfileInput,
   UpdateRecipeInput,
@@ -254,6 +256,17 @@ export async function suggestFlavorPairings(
     body: input,
   });
   return { pairings: res.suggestions ?? [] };
+}
+
+export async function matchRecipesToTaste(
+  input: TasteMatchInput,
+  options: RequestOptions = {},
+): Promise<{ matches: TasteMatchResult[] }> {
+  return request<{ matches: TasteMatchResult[] }>("/ai/recipes/taste-match", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
 }
 
 export async function analyzeFoodPhoto(
