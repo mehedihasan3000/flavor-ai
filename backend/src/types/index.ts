@@ -37,6 +37,9 @@ export const RECIPE_CATEGORY = [
   "beverage",
 ] as const;
 
+export const TASTE_PROFILE = ["spicy", "sweet", "salty", "sour", "bitter", "umami"] as const;
+export const TASTE_INTENSITY = ["mild", "medium", "strong"] as const;
+
 export const COMMENT_STATUS = ["visible", "moderated"] as const;
 export const AI_GENERATION_STATUS = ["success", "failed", "timeout"] as const;
 export const AI_ERROR_CATEGORY = [
@@ -205,6 +208,31 @@ export const FlavorPairingSuggestionSchema = z.object({
 });
 
 export type FlavorPairingSuggestion = z.infer<typeof FlavorPairingSuggestionSchema>;
+
+// ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03) — Additive (post-freeze)
+// ---------------------------------------------------------------------------
+
+export const TasteMatchInput = z.object({
+  tastes: z
+    .array(z.enum(TASTE_PROFILE))
+    .min(1, "Select at least one taste preference")
+    .max(TASTE_PROFILE.length),
+  intensity: z.enum(TASTE_INTENSITY).optional(),
+  notes: z.string().max(300).optional(),
+  limit: z.number().int().min(1).max(20).default(10),
+});
+
+export type TasteMatchInput = z.infer<typeof TasteMatchInput>;
+
+export const TasteMatchSuggestionSchema = z.object({
+  recipeId: ObjectIdString,
+  score: z.number().min(0).max(100),
+  matchedTastes: z.array(z.enum(TASTE_PROFILE)).default([]),
+  reason: z.string().min(3).max(300),
+});
+
+export type TasteMatchSuggestion = z.infer<typeof TasteMatchSuggestionSchema>;
 
 // ---------------------------------------------------------------------------
 // Food Photo Nutrition Analysis (FR-PHOTO-01..04)

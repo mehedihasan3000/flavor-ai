@@ -177,6 +177,7 @@ contract had no endpoint.
 | POST | `/ai/recipes/generate` | required | Generate recipe from pantry + preferences (FR-AI-01..08) |
 | POST | `/ai/flavor-pairings` | required | Complementary ingredients/substitutions (FR-FLAVOR) |
 | POST | `/ai/nutrition/analyze-photo` | required | Analyze food photo for nutrition estimation (FR-PHOTO-01..04) |
+| POST | `/ai/recipes/taste-match` | required | **Additive:** recommend existing recipes matching taste preferences (FR-TASTE-01..03) |
 
 **`POST /ai/recipes/generate` body** (`AIRecipePromptInput`):
 ```json
@@ -246,6 +247,42 @@ contract had no endpoint.
 ```
 
 **Failure handling:** timeout ≤30s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable.
+
+**Additive (post-freeze): `POST /ai/recipes/taste-match`** (required, `aiRateLimiter`) — AI
+Taste Matcher (FR-TASTE-01..03). Recommends existing **published** recipes that best match
+a user's taste preferences, instead of generating a new recipe. The backend pre-filters
+published recipes into a bounded candidate pool (via the existing text index and `tags`
+field — no schema change), then asks the AI to score/rank only within that pool; any
+`recipeId` the model returns outside the offered candidates is discarded server-side.
+
+Body (`TasteMatchInput`):
+```json
+{
+  "tastes": ["spicy", "umami"],
+  "intensity": "strong",
+  "notes": "not too oily, prefer noodle or rice dishes",
+  "limit": 10
+}
+```
+`tastes` (required, 1-6 of `"spicy" | "sweet" | "salty" | "sour" | "bitter" | "umami"`),
+`intensity` (optional, `"mild" | "medium" | "strong"`), `notes` (optional, max 300 chars),
+`limit` (optional, default 10, max 20).
+
+→ 200:
+```json
+{
+  "matches": [
+    {
+      "recipe": { "id": "...", "title": "Spicy Miso Ramen", "...": "full Recipe object, same shape as GET /recipes/:id" },
+      "score": 92,
+      "matchedTastes": ["spicy", "umami"],
+      "reason": "Chili oil and miso broth deliver a strong spicy-umami combination."
+    }
+  ]
+}
+```
+Returns `{ "matches": [] }` (200, not an error) when no published recipes exist yet.
+Same failure handling as the other AI endpoints above.
 
 ---
 

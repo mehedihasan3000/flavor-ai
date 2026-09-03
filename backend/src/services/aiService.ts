@@ -1,9 +1,13 @@
 import { env } from "../config/env.js";
 import { AIGenerationLogModel } from "../models/AIGenerationLog.js";
+import { RecipeModel, type Recipe } from "../models/Recipe.js";
+import { toRecipeResponse } from "../controllers/recipeController.js";
 import {
   AIRecipeOutputSchema,
   FlavorPairingSuggestionSchema,
   FoodPhotoAnalysisResult,
+  TASTE_PROFILE,
+  TasteMatchSuggestionSchema,
   type AIRecipeOutput,
   type AIRecipePromptInput,
   type FlavorPairingInput,
@@ -12,13 +16,20 @@ import {
   type IngredientInput,
   type PantryMatchResult,
   type RecipeIngredient,
+  type TasteMatchInput,
+  type TasteMatchSuggestion,
 } from "../types/index.js";
 import { validateImageInput } from "./imageService.js";
 import { ApiError } from "../utils/ApiError.js";
+import type { HydratedDocument } from "mongoose";
 import { z } from "zod";
 
 const FlavorPairingOutputSchema = z.object({
   suggestions: z.array(FlavorPairingSuggestionSchema),
+});
+
+const TasteMatchOutputSchema = z.object({
+  matches: z.array(TasteMatchSuggestionSchema),
 });
 
 /**
@@ -542,6 +553,289 @@ export async function generateFlavorPairings(
   });
 
   return { suggestions: validationResult.data.suggestions };
+}
+
+// ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03)
+// ---------------------------------------------------------------------------
+
+/** Search keywords per taste, used to build the candidate recipe pool via the
+ * existing text index (title/summary/ingredients.name) and `tags` field —
+ * no schema change needed on Recipe. */
+const TASTE_KEYWORDS: Record<(typeof TASTE_PROFILE)[number], string[]> = {
+  spicy: ["spicy", "chili", "chilli", "pepper", "cayenne", "jalapeno", "hot sauce", "sriracha", "curry", "harissa"],
+  sweet: ["sweet", "sugar", "honey", "caramel", "chocolate", "dessert", "maple", "fruit"],
+  salty: ["salty", "salt", "brine", "soy sauce", "cheese", "bacon", "olives", "pickled"],
+  sour: ["sour", "tangy", "citrus", "lemon", "lime", "vinegar", "yogurt", "tamarind"],
+  bitter: ["bitter", "coffee", "cocoa", "kale", "arugula", "grapefruit", "beer"],
+  umami: ["umami", "savory", "mushroom", "soy sauce", "parmesan", "miso", "broth", "tomato"],
+};
+
+const TASTE_CANDIDATE_POOL_SIZE = 40;
+const TASTE_CANDIDATE_MIN_BEFORE_FALLBACK = 10;
+
+interface TasteCandidateSummary {
+  id: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  cuisine: string | null;
+  category: string | null;
+  keyIngredients: string[];
+}
+
+function toCandidateSummary(recipe: HydratedDocument<Recipe>): TasteCandidateSummary {
+  return {
+    id: recipe._id.toString(),
+    title: recipe.title,
+    summary: (recipe.summary ?? "").slice(0, 150),
+    tags: recipe.tags ?? [],
+    cuisine: recipe.cuisine ?? null,
+    category: recipe.category ?? null,
+    keyIngredients: (recipe.ingredients ?? []).slice(0, 6).map((ing) => ing.name),
+  };
+}
+
+/**
+ * Selects a bounded pool of published recipes likely relevant to the
+ * requested tastes, reusing the existing text index and `tags` field so the
+ * AI prompt stays small and cost-predictable regardless of catalog size.
+ * Pads with recently published recipes if the keyword match is too sparse
+ * (FR-TASTE-02).
+ */
+async function selectTasteCandidates(
+  tastes: TasteMatchInput["tastes"],
+): Promise<Map<string, HydratedDocument<Recipe>>> {
+  const keywordSet = new Set<string>();
+  for (const taste of tastes) {
+    keywordSet.add(taste);
+    for (const keyword of TASTE_KEYWORDS[taste] ?? []) keywordSet.add(keyword);
+  }
+  const keywords = Array.from(keywordSet);
+  const keywordQuery = keywords.join(" ");
+
+  const [tagMatches, textMatches] = await Promise.all([
+    RecipeModel.find({ status: "published", tags: { $in: keywords } }).limit(
+      TASTE_CANDIDATE_POOL_SIZE,
+    ),
+    RecipeModel.find(
+      { status: "published", $text: { $search: keywordQuery } },
+      { score: { $meta: "textScore" } },
+    )
+      .sort({ score: { $meta: "textScore" } })
+      .limit(TASTE_CANDIDATE_POOL_SIZE),
+  ]);
+
+  const candidates = new Map<string, HydratedDocument<Recipe>>();
+  for (const doc of [...tagMatches, ...textMatches]) {
+    candidates.set(doc._id.toString(), doc);
+  }
+
+  if (candidates.size < TASTE_CANDIDATE_MIN_BEFORE_FALLBACK) {
+    const fallback = await RecipeModel.find({ status: "published" })
+      .sort({ publishedAt: -1 })
+      .limit(TASTE_CANDIDATE_POOL_SIZE);
+    for (const doc of fallback) {
+      if (candidates.size >= TASTE_CANDIDATE_POOL_SIZE) break;
+      candidates.set(doc._id.toString(), doc);
+    }
+  }
+
+  return candidates;
+}
+
+/**
+ * Constructs prompt asking the AI to score/rank candidate recipes against
+ * the user's requested taste preferences.
+ */
+export function buildTasteMatchPrompt(
+  input: TasteMatchInput,
+  candidates: TasteCandidateSummary[],
+): { systemPrompt: string; userPrompt: string } {
+  const systemPrompt = `You are FlavorAI, an expert taste-profiling culinary assistant.
+Given a user's taste preferences and a list of candidate recipes, score how well each candidate matches those tastes.
+
+CRITICAL INSTRUCTIONS:
+1. Return ONLY a single valid JSON object. Do NOT wrap the JSON in markdown fences (e.g. no \`\`\`json).
+2. The output MUST conform strictly to this JSON structure:
+{
+  "matches": [
+    {
+      "recipeId": string (MUST be exactly one of the candidate ids provided below — never invent an id),
+      "score": number (0-100, higher = better taste match),
+      "matchedTastes": string[] (subset of ${JSON.stringify(TASTE_PROFILE)} this recipe satisfies),
+      "reason": string (1-2 sentences explaining the match in plain language)
+    }
+  ]
+}
+3. Only include recipes genuinely worth recommending — omit weak or irrelevant matches rather than padding the list.
+4. Order "matches" from highest to lowest score.
+5. Never fabricate a recipeId that is not in the candidate list below.`;
+
+  const tasteDetails: string[] = [`Requested tastes: ${input.tastes.join(", ")}`];
+  if (input.intensity) tasteDetails.push(`Overall intensity preference: ${input.intensity}`);
+  if (input.notes?.trim()) tasteDetails.push(`Additional notes from user: ${input.notes.trim()}`);
+
+  const candidateList = candidates
+    .map(
+      (c) =>
+        `- id: ${c.id} | title: "${c.title}" | tags: [${c.tags.join(", ")}] | cuisine: ${c.cuisine ?? "n/a"} | category: ${c.category ?? "n/a"} | key ingredients: ${c.keyIngredients.join(", ")} | summary: ${c.summary}`,
+    )
+    .join("\n");
+
+  const userPrompt = `User taste preferences:\n- ${tasteDetails.join("\n- ")}\n\nCandidate recipes:\n${candidateList}\n\nScore and rank the candidates above by how well they match the user's taste preferences. Return at most ${input.limit} matches.`;
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * Recommends existing published recipes that best match a user's taste
+ * preferences via AI reranking of a pre-filtered candidate pool.
+ * (FR-TASTE-01..03)
+ */
+export async function matchRecipesToTaste(
+  input: TasteMatchInput,
+  userId?: string,
+): Promise<{ matches: Array<{ recipe: ReturnType<typeof toRecipeResponse>; score: number; matchedTastes: TasteMatchSuggestion["matchedTastes"]; reason: string }> }> {
+  const apiKey = env.GROQ_API_KEY;
+  if (!apiKey || apiKey === "change-me") {
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI service key is not configured.");
+  }
+
+  const candidateMap = await selectTasteCandidates(input.tastes);
+  if (candidateMap.size === 0) {
+    return { matches: [] };
+  }
+
+  const candidateSummaries = Array.from(candidateMap.values()).map(toCandidateSummary);
+  const { systemPrompt, userPrompt } = buildTasteMatchPrompt(input, candidateSummaries);
+  const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), env.AI_REQUEST_TIMEOUT_MS);
+
+  let rawResponseText = "";
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: env.GROQ_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.4,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    clearTimeout(timeoutId);
+    const latencyMs = Date.now() - startTime;
+
+    if (!res.ok) {
+      await logAIGeneration({
+        userId,
+        input,
+        model: env.GROQ_MODEL,
+        status: "failed",
+        latencyMs,
+        errorCategory: res.status === 429 ? "rate_limit" : "provider_error",
+      });
+      throw new ApiError(
+        502,
+        "AI_PROVIDER_ERROR",
+        "AI taste matching service unavailable. Please try again.",
+      );
+    }
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    rawResponseText = data.choices?.[0]?.message?.content ?? "";
+  } catch (err: unknown) {
+    clearTimeout(timeoutId);
+    const latencyMs = Date.now() - startTime;
+    if (err instanceof ApiError) throw err;
+
+    const isTimeout =
+      (err as Error)?.name === "AbortError" || (err as Error)?.message?.includes("aborted");
+
+    await logAIGeneration({
+      userId,
+      input,
+      model: env.GROQ_MODEL,
+      status: isTimeout ? "timeout" : "failed",
+      latencyMs,
+      errorCategory: isTimeout ? "timeout" : "provider_error",
+    });
+
+    if (isTimeout) {
+      throw new ApiError(504, "AI_PROVIDER_ERROR", "Taste matching request timed out. Please try again.");
+    }
+
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI service encountered an error. Please try again.");
+  }
+
+  const latencyMs = Date.now() - startTime;
+  const cleanedJson = cleanJsonResponse(rawResponseText);
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(cleanedJson);
+  } catch {
+    await logAIGeneration({
+      userId,
+      input,
+      model: env.GROQ_MODEL,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI returned invalid taste match data format.");
+  }
+
+  const validationResult = TasteMatchOutputSchema.safeParse(parsedJson);
+  if (!validationResult.success) {
+    console.error(
+      "[aiService] TasteMatchOutputSchema validation failed:",
+      validationResult.error.flatten(),
+    );
+    await logAIGeneration({
+      userId,
+      input,
+      model: env.GROQ_MODEL,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI taste matching failed validation requirements.");
+  }
+
+  // Safety: discard any recipeId the model may have hallucinated outside the
+  // candidate pool we actually offered it, then hydrate the real recipe docs.
+  const matches = validationResult.data.matches
+    .filter((match) => candidateMap.has(match.recipeId))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, input.limit)
+    .map((match) => ({
+      recipe: toRecipeResponse(candidateMap.get(match.recipeId)!),
+      score: match.score,
+      matchedTastes: match.matchedTastes,
+      reason: match.reason,
+    }));
+
+  await logAIGeneration({
+    userId,
+    input,
+    model: env.GROQ_MODEL,
+    status: "success",
+    latencyMs,
+  });
+
+  return { matches };
 }
 
 /**
