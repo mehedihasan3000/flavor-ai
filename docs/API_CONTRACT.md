@@ -31,6 +31,8 @@ Smoke test. Returns 200 when MongoDB connected, 503 otherwise.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+| POST | `/auth/sign-up` | public | Create email/password account (scrypt hash, FR-AUTH-01/07) |
+| POST | `/auth/sign-in` | public | Verify email/password → user context (FR-AUTH-02/07, no auto-create) |
 | POST | `/auth/token/verify` | public | Verify signed JWT → user context (lazily upserts the user) |
 | POST | `/auth/logout` | required | Revoke current session/token (stateless: client discards the token) |
 
@@ -41,6 +43,28 @@ after a Better Auth session is confirmed; the secret never reaches browser JS
 (SRS §9.4). The token subject (`sub`) is the Better Auth user id, stored on the
 `User` document as `providerId`. Verification lives in `backend/src/middleware/auth.ts`.
 
+**`POST /auth/sign-up` body** (`CredentialSignUpInput`):
+```json
+{ "name": "Ada Lovelace", "email": "ada@example.com", "password": "s3cretP@ss!" }
+```
+→ 201 `{ user: { id, providerId, name, email, role: "user", avatarUrl } }`.
+New accounts are ALWAYS `role: "user"` (never derived from the email).
+409 `CONFLICT` if the email is already registered with a password.
+Addresses that exist without a password (legacy mock / Google-only docs) can
+claim the address here — the first password is set and the stored `providerId`
+is reused. 400 on invalid shape. Passwords are scrypt-hashed, never returned.
+
+**`POST /auth/sign-in` body** (`CredentialSignInInput`):
+```json
+{ "email": "ada@example.com", "password": "s3cretP@ss!" }
+```
+→ 200 `{ user: { id, providerId, name, email, role, avatarUrl } }`.
+401 `UNAUTHORIZED` for unknown email or wrong password (generic
+`"Invalid email or password."` to avoid account enumeration), or for
+password-less (Google-only) accounts (`"This account uses Google sign-in..."`).
+NEVER creates a user and NEVER returns the password hash. The frontend mints
+its Bearer JWT only after this endpoint confirms the credentials.
+
 **`POST /auth/token/verify` → 200**
 ```json
 {
@@ -49,6 +73,9 @@ after a Better Auth session is confirmed; the secret never reaches browser JS
 ```
 Users are matched by `providerId`; if absent, a new `User` is created (`role: "user"`,
 name defaults to `"User"` when the token carries no name). Invalid/expired token → 401.
+Note: email/password logins MUST go through `/auth/sign-in` first — `verify`
+upserts by design (Google first-login / Better Auth bridge), so calling it
+directly with a self-minted JWT would bypass credential checks.
 
 **`POST /auth/logout` → 204** — no body. Stateless JWT revocation is client-side;
 the endpoint exists for contract compliance.
