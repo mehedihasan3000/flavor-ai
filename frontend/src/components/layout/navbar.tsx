@@ -80,7 +80,7 @@ export function Navbar() {
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
-          {NAV_LINKS.map((link) => (
+          {NAV_LINKS.filter(link => isAuthenticated || !["/nutrition-analyzer", "/dashboard", "/favorites"].includes(link.href)).map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -222,7 +222,8 @@ export function Navbar() {
           className="border-t border-border bg-card/95 backdrop-blur-md md:hidden"
         >
           <div className="mx-auto max-w-6xl space-y-1 px-4 py-4 sm:px-6">
-            {NAV_LINKS.map((link) => (
+            {NAV_LINKS.filter(link => isAuthenticated || !["/nutrition-analyzer", "/dashboard", "/favorites"].includes(link.href))
+              .map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
