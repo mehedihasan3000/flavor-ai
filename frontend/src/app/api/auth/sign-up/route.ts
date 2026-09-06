@@ -1,6 +1,23 @@
 import { NextResponse } from "next/server";
 import { mintAccessToken } from "@/lib/jwt";
 
+const DEFAULT_API_URL = "http://localhost:4000/api/v1";
+
+function getBackendBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!raw) return DEFAULT_API_URL;
+  return raw.replace(/\/+$/, "");
+}
+
+interface BackendAuthUser {
+  id: string;
+  providerId?: string | null;
+  email: string;
+  name: string;
+  role: "user" | "admin";
+  avatarUrl?: string | null;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -29,22 +46,63 @@ export async function POST(request: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
-    const providerId = `usr_${Buffer.from(cleanEmail).toString("hex").slice(0, 24)}`;
+
+    // Create the account in the backend first (source of truth). The backend
+    // returns 409 if the email is already registered with a password.
+    let backendUser: BackendAuthUser;
+    try {
+      const backendRes = await fetch(`${getBackendBaseUrl()}/auth/sign-up`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ name: cleanName, email: cleanEmail, password }),
+        cache: "no-store",
+      });
+      const backendData = await backendRes.json().catch(() => null);
+      if (!backendRes.ok) {
+        const safeMessage =
+          typeof backendData?.safeMessage === "string"
+            ? backendData.safeMessage
+            : "Failed to create account. Please try again.";
+        return NextResponse.json(
+          { safeMessage, validation: backendData?.validation },
+          { status: backendRes.status },
+        );
+      }
+      backendUser = (backendData as { user?: BackendAuthUser })?.user as BackendAuthUser;
+      if (!backendUser?.email) {
+        return NextResponse.json(
+          { safeMessage: "Failed to create account. Please try again." },
+          { status: 500 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { safeMessage: "Cannot reach the authentication service. Please try again." },
+        { status: 503 },
+      );
+    }
+
+    // New accounts are ALWAYS role "user" (backend-enforced). Mint after creation.
+    const providerId =
+      backendUser.providerId ||
+      `usr_${Buffer.from(backendUser.email).toString("hex").slice(0, 24)}`;
 
     const token = mintAccessToken({
       sub: providerId,
-      email: cleanEmail,
-      name: cleanName,
-      role: "user",
+      email: backendUser.email,
+      name: backendUser.name,
+      role: backendUser.role,
+      avatarUrl: backendUser.avatarUrl ?? null,
     });
 
     return NextResponse.json({
       token,
       user: {
-        id: providerId,
-        email: cleanEmail,
-        name: cleanName,
-        role: "user",
+        id: backendUser.id,
+        email: backendUser.email,
+        name: backendUser.name,
+        role: backendUser.role,
+        avatarUrl: backendUser.avatarUrl ?? null,
       },
     });
   } catch (error) {

@@ -421,6 +421,25 @@ export type CreateCommentInput = z.infer<typeof CreateCommentInput>;
 export type UpdateCommentInput = z.infer<typeof UpdateCommentInput>;
 
 // ---------------------------------------------------------------------------
+// Email/password credentials (FR-AUTH-01/02/07)
+// ---------------------------------------------------------------------------
+
+export const CredentialSignUpInput = z.object({
+  name: z.string().trim().min(1, "Display name is required").max(100),
+  email: z.string().trim().toLowerCase().email("Please provide a valid email address").max(254),
+  password: z.string().min(8, "Password must be at least 8 characters long.").max(128),
+});
+
+export type CredentialSignUpInput = z.infer<typeof CredentialSignUpInput>;
+
+export const CredentialSignInInput = z.object({
+  email: z.string().trim().toLowerCase().email("Please provide a valid email address").max(254),
+  password: z.string().min(1, "Password is required").max(128),
+});
+
+export type CredentialSignInInput = z.infer<typeof CredentialSignInInput>;
+
+// ---------------------------------------------------------------------------
 // User profile / preferences (FR-AUTH-06)
 // ---------------------------------------------------------------------------
 

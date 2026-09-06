@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeSlash, Flame, Person } from "@gravity-ui/icons";
@@ -20,9 +20,14 @@ function SignUpContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  if (isAuthenticated && !loading) {
-    router.push("/profile");
-  }
+  // If already authenticated, redirect (in an effect — never during render,
+  // otherwise React throws "Cannot update a component (Router) while
+  // rendering a different component")
+  useEffect(() => {
+    if (isAuthenticated && !loading) {
+      router.push("/profile");
+    }
+  }, [isAuthenticated, loading, router]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
