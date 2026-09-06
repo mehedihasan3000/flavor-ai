@@ -112,7 +112,8 @@ export async function POST(request: Request) {
       (payload.name?.trim() || payload.given_name?.trim() || email.split("@")[0] || "User").trim();
     const picture: string | null = typeof payload.picture === "string" ? payload.picture : null;
 
-    const isAdmin = email.startsWith("admin@") || email.includes("admin");
+    // New accounts are ALWAYS role "user" (backend-enforced; admin promotion via seed/DB only).
+    const role = "user" as const;
 
     // Deterministic providerId derived from email so Google and email/password share the same FlavorAI account
     const providerId = `usr_${Buffer.from(email).toString("hex").slice(0, 24)}`;
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
       sub: providerId,
       email,
       name: displayName,
-      role: isAdmin ? "admin" : "user",
+      role,
       avatarUrl: picture,
     });
 
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
         id: providerId,
         email,
         name: displayName,
-        role: isAdmin ? "admin" : "user",
+        role,
         avatarUrl: picture,
       },
     });

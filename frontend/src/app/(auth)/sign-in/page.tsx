@@ -5,15 +5,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeSlash, Flame, Lock, Person } from "@gravity-ui/icons";
 import { useAuth } from "@/lib/auth-context";
+import { getSafeCallbackUrl } from "@/lib/auth-utils";
 import { Alert, Button, Card, Input } from "@/components/ui";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/profile";
+  const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"));
 
-  const { signIn, isAuthenticated } = useAuth();
+  const { signIn, isAuthenticated, isLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,6 +30,20 @@ function SignInContent() {
       router.push(callbackUrl);
     }
   }, [isAuthenticated, loading, router, callbackUrl]);
+
+  // Prevent flash of unauthenticated content (FOUC) while session hydrates or during redirect
+  if (isLoading || (isAuthenticated && !loading)) {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 py-24 text-center">
+        <div className="inline-flex size-12 items-center justify-center rounded-2xl bg-primary-soft text-primary-strong shadow-sm animate-pulse">
+          <Flame className="size-7" aria-hidden="true" />
+        </div>
+        <p className="mt-4 text-sm font-medium text-muted-foreground">
+          Checking session…
+        </p>
+      </div>
+    );
+  }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -70,6 +85,11 @@ function SignInContent() {
       setLoading(false);
     }
   };
+
+  const signUpHref =
+    callbackUrl && callbackUrl !== "/profile"
+      ? `/sign-up?callbackUrl=${encodeURIComponent(callbackUrl)}`
+      : "/sign-up";
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-12 sm:px-6 lg:py-16">
@@ -115,6 +135,7 @@ function SignInContent() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
+                className="pr-10"
               />
               <button
                 type="button"
@@ -146,7 +167,7 @@ function SignInContent() {
           </div>
         </div>
 
-        <GoogleSignInButton text="signin_with" disabled={loading} onError={setError} />
+        <GoogleSignInButton text="signin_with" redirectTo={callbackUrl} disabled={loading} onError={setError} />
 
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
@@ -184,7 +205,7 @@ function SignInContent() {
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Don&apos;t have an account yet?{" "}
         <Link
-          href="/sign-up"
+          href={signUpHref}
           className="font-medium text-primary-strong hover:text-primary-deep transition-colors inline-flex items-center gap-1"
         >
           Sign up for free
