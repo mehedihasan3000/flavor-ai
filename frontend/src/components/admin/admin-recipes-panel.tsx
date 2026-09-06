@@ -109,8 +109,8 @@ export function AdminRecipesPanel() {
 
   return (
     <div>
-      <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-col gap-3 sm:flex-row">
-        <div className="flex-1">
+      <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex-1 min-w-0">
           <Input
             type="search"
             value={qInput}
@@ -126,14 +126,16 @@ export function AdminRecipesPanel() {
             setStatus(event.target.value as RecipeStatus | "");
             setPage(1);
           }}
-          className="sm:w-40"
+          className="sm:w-40 shrink-0"
         >
           <option value="">All statuses</option>
           <option value="published">Published</option>
           <option value="draft">Draft</option>
           <option value="hidden">Hidden</option>
         </Select>
-        <Button type="submit">Search</Button>
+        <Button type="submit" className="shrink-0">
+          Search
+        </Button>
       </form>
 
       {actionError && <p className="mb-3 text-xs font-medium text-danger-strong">{actionError}</p>}
