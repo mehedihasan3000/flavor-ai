@@ -13,6 +13,8 @@ import type {
   CreateRatingInput,
   CreateRecipeInput,
   DashboardStats,
+  DietPlanInput,
+  DietPlanResult,
   ErrorCode,
   ErrorEnvelope,
   FavoriteItem,
@@ -274,6 +276,19 @@ export async function analyzeFoodPhoto(
   options: RequestOptions = {},
 ): Promise<FoodPhotoAnalysisResult> {
   return request<FoodPhotoAnalysisResult>("/ai/nutrition/analyze-photo", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+// ─── Diet Plan (INFO.md feature) ─────────────────────────────────────────────
+
+export async function getDietPlan(
+  input: DietPlanInput,
+  options: RequestOptions = {},
+): Promise<DietPlanResult> {
+  return request<DietPlanResult>("/diet/plan", {
     ...options,
     method: "POST",
     body: input,

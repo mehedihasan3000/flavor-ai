@@ -302,6 +302,65 @@ export const FoodPhotoAnalysisResult = z.object({
 export type FoodPhotoAnalysisResult = z.infer<typeof FoodPhotoAnalysisResult>;
 
 // ---------------------------------------------------------------------------
+// Personalized Diet Plan & Nutrition Requirement Calculator (INFO.md feature)
+// ---------------------------------------------------------------------------
+
+export const SEX = ["male", "female"] as const;
+
+export const ACTIVITY_LEVEL = [
+  "sedentary",
+  "light",
+  "moderate",
+  "active",
+  "very-active",
+] as const;
+
+export const BMI_CATEGORY = [
+  "Underweight",
+  "Normal weight",
+  "Overweight",
+  "Obesity",
+] as const;
+
+export const DietPlanInput = z.object({
+  age: z.coerce.number().int().min(1, "Age must be at least 1").max(120, "Age must be at most 120"),
+  weightKg: z.coerce.number().min(20, "Weight must be at least 20 kg").max(300, "Weight must be at most 300 kg"),
+  heightCm: z.coerce.number().min(50, "Height must be at least 50 cm").max(250, "Height must be at most 250 cm"),
+  sex: z.enum(SEX),
+  activityLevel: z.enum(ACTIVITY_LEVEL),
+  dietaryPreference: z.enum(DIETARY_LABEL).optional(),
+});
+
+export type DietPlanInput = z.infer<typeof DietPlanInput>;
+
+export const DietPlanFoodItem = z.object({
+  food: z.string().min(1).max(100),
+  portion: z.string().min(1).max(100),
+  proteinGrams: z.number().nonnegative(),
+  note: z.string().max(200).optional(),
+});
+
+export type DietPlanFoodItem = z.infer<typeof DietPlanFoodItem>;
+
+export const DietPlanResult = z.object({
+  bmi: z.number().nonnegative(),
+  bmiCategory: z.enum(BMI_CATEGORY),
+  bmrCalories: z.number().int().nonnegative(),
+  dailyCalories: z.number().int().nonnegative(),
+  protein: z.object({
+    min: z.number().int().nonnegative(),
+    max: z.number().int().nonnegative(),
+    estimate: z.number().int().nonnegative(),
+  }),
+  foodPlan: z.array(DietPlanFoodItem).min(1),
+  disclaimer: z.string().default(
+    "These values are estimates for general guidance only and are not medical advice. Food suggestions are filtered on a best-effort basis and cannot guarantee compliance with dietary restrictions or allergen avoidance — always verify ingredients independently. Consult a registered dietitian or healthcare professional before making significant dietary changes.",
+  ),
+});
+
+export type DietPlanResult = z.infer<typeof DietPlanResult>;
+
+// ---------------------------------------------------------------------------
 // Pantry matching (FR-PANTRY-02/03)
 // ---------------------------------------------------------------------------
 
