@@ -28,13 +28,13 @@ export function Select({
   const errorId = `${id}-error`;
 
   return (
-    <div className="w-full">
+    <div className={["w-full", className].filter(Boolean).join(" ")}>
       {label ? (
         <FieldLabel htmlFor={id} required={required}>
           {label}
         </FieldLabel>
       ) : null}
-      <div className="relative">
+      <div className="relative w-full">
         <select
           id={id}
           required={required}
@@ -43,7 +43,7 @@ export function Select({
             [hint ? hintId : undefined, error ? errorId : undefined].filter(Boolean).join(" ") ||
             undefined
           }
-          className={[controlClass(Boolean(error)), "appearance-none pr-9", className]
+          className={[controlClass(Boolean(error)), "w-full appearance-none pr-9"]
             .filter(Boolean)
             .join(" ")}
           {...props}
