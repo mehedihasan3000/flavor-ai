@@ -66,7 +66,7 @@ export function AuthPrompt({
               Sign in
             </Button>
           </Link>
-          <Link href="/sign-up" className="w-full sm:w-auto">
+          <Link href={`/sign-up${redirectParam}`} className="w-full sm:w-auto">
             <Button size="sm" variant="outline" className="w-full sm:w-auto">
               Sign up
             </Button>
@@ -94,7 +94,7 @@ export function AuthPrompt({
             Sign in
           </Button>
         </Link>
-        <Link href="/sign-up">
+        <Link href={`/sign-up${redirectParam}`}>
           <Button size="sm" variant="outline" className="w-full sm:w-auto">
             Create account
           </Button>

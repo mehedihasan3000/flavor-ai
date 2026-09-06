@@ -70,7 +70,7 @@ function RecipesContent() {
   const q = searchParams.get("q") ?? "";
   const categoryParam = searchParams.get("category") ?? "";
   const category = isRecipeCategory(categoryParam) ? categoryParam : "";
-  const cuisine = searchParams.get("cuisine") ?? "";
+  const cuisine = (searchParams.get("cuisine") ?? "").toLowerCase();
   const dietParam = searchParams.get("diet") ?? "";
   const diet = isDietaryLabel(dietParam) ? dietParam : "";
   const difficultyParam = searchParams.get("difficulty") ?? "";
@@ -246,8 +246,8 @@ function RecipesContent() {
         onSubmit={handleSearchSubmit}
         className="mb-6 space-y-3 rounded-card border border-border bg-card p-4"
       >
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="flex-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex-1 min-w-0">
             <Input
               type="search"
               value={searchInput}
@@ -256,25 +256,31 @@ function RecipesContent() {
               aria-label="Search recipes"
             />
           </div>
-          <Input
-            type="text"
-            value={cuisineInput}
-            onChange={(event) => setCuisineInput(event.target.value)}
-            placeholder="Cuisine, e.g. Italian"
-            aria-label="Filter by cuisine"
-            className="sm:w-48"
-          />
-          <Input
-            type="number"
-            min={1}
-            step={1}
-            value={maxTimeInput}
-            onChange={(event) => setMaxTimeInput(event.target.value)}
-            placeholder="Max minutes"
-            aria-label="Maximum total cooking time in minutes"
-            className="sm:w-36"
-          />
-          <Button type="submit" leadingIcon={<Magnifier className="size-4" aria-hidden="true" />}>
+          <div className="w-full sm:w-48 sm:shrink-0">
+            <Input
+              type="text"
+              value={cuisineInput}
+              onChange={(event) => setCuisineInput(event.target.value)}
+              placeholder="Cuisine, e.g. Italian"
+              aria-label="Filter by cuisine"
+            />
+          </div>
+          <div className="w-full sm:w-36 sm:shrink-0">
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={maxTimeInput}
+              onChange={(event) => setMaxTimeInput(event.target.value)}
+              placeholder="Max minutes"
+              aria-label="Maximum total cooking time in minutes"
+            />
+          </div>
+          <Button
+            type="submit"
+            leadingIcon={<Magnifier className="size-4" aria-hidden="true" />}
+            className="w-full sm:w-auto shrink-0"
+          >
             Search
           </Button>
         </div>
