@@ -18,7 +18,7 @@ interface EditRecipePageProps {
 export default function EditRecipePage({ params }: EditRecipePageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const { token, isLoading: authLoading } = useAuth();
+  const { isLoading: authLoading } = useAuth();
   const toast = useToast();
 
   // Load state
@@ -40,7 +40,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
   // Load recipe once auth has hydrated so owner drafts resolve (optionalAuth)
   useEffect(() => {
     if (authLoading) return;
-    getRecipe(id, { token })
+    getRecipe(id)
       .then((data) => {
         setRecipe(data);
         setIsLoading(false);
@@ -49,7 +49,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
         setLoadError(err instanceof ApiError ? err.message : "Failed to load the recipe.");
         setIsLoading(false);
       });
-  }, [id, token, authLoading]);
+  }, [id, authLoading]);
 
   // ── Form submit ─────────────────────────────────────────────────────────────
   const handleSubmit = async (input: CreateRecipeInput) => {
@@ -59,7 +59,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
     setIsSubmitting(true);
 
     try {
-      const updated = await updateRecipe(id, input, { token });
+      const updated = await updateRecipe(id, input);
       setRecipe(updated);
       setSuccessMessage("Changes saved successfully!");
       toast.success("Changes saved successfully!", { title: "Recipe updated" });
@@ -89,8 +89,8 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
     setSubmitError(null);
     try {
       const updated = recipe.status === "published"
-        ? await unpublishRecipe(id, { token })
-        : await publishRecipe(id, { token });
+        ? await unpublishRecipe(id)
+        : await publishRecipe(id);
       setRecipe(updated);
       const msg =
         updated.status === "published"
@@ -113,7 +113,7 @@ export default function EditRecipePage({ params }: EditRecipePageProps) {
   const handleDelete = async () => {
     setStatusActionLoading(true);
     try {
-      await deleteRecipe(id, { token });
+      await deleteRecipe(id);
       toast.success(`"${recipe?.title ?? "Recipe"}" was deleted.`, { title: "Recipe deleted" });
       router.push("/recipes");
     } catch (err) {

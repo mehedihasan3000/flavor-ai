@@ -9,6 +9,7 @@ import { favoritesRouter } from "./favorites.js";
 import { aiRouter } from "./ai.js";
 import { ratingsRouter } from "./ratings.js";
 import { authLimiter } from "../middleware/rateLimit.js";
+import { dietRouter } from "./diet.js";
 import { recipesRouter } from "./recipes.js";
 import { uploadRouter } from "./upload.js";
 
@@ -44,3 +45,4 @@ v1Router.use("/admin", adminRouter);
 v1Router.use("/recipes", recipesRouter);
 v1Router.use("/ai", aiRouter);
 v1Router.use("/upload", uploadRouter);
+v1Router.use("/diet", dietRouter);

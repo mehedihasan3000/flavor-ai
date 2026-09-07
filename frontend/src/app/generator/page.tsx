@@ -77,7 +77,7 @@ const GENERATION_PROGRESS_MESSAGES = [
 ];
 
 export default function GeneratorPage() {
-  const { token } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Form State
   const [ingredients, setIngredients] = useState<string[]>([]);
@@ -110,10 +110,10 @@ export default function GeneratorPage() {
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [createdRecipeId, setCreatedRecipeId] = useState<string | null>(null);
 
-  // Fetch profile on mount to pre-fill dietary preferences (requires a session token)
+  // Fetch profile on mount to pre-fill dietary preferences
   useEffect(() => {
-    if (!token) return;
-    getMyProfile({ token })
+    if (authLoading || !isAuthenticated) return;
+    getMyProfile()
       .then((userProfile) => {
         setHasProfile(true);
         if (userProfile.preferences) {
@@ -136,7 +136,7 @@ export default function GeneratorPage() {
         setHasProfile(false);
         setProfileLoaded(true);
       });
-  }, [token]);
+  }, [authLoading, isAuthenticated]);
 
   // Handle progress timer during generation
   useEffect(() => {
@@ -163,7 +163,7 @@ export default function GeneratorPage() {
       return;
     }
 
-    if (!token) {
+    if (!isAuthenticated) {
       setValidationError("Please sign in to generate recipes.");
       return;
     }
@@ -190,7 +190,7 @@ export default function GeneratorPage() {
     };
 
     try {
-      const generated = await generateAIRecipe(promptInput, { token });
+      const generated = await generateAIRecipe(promptInput);
       setRecipe(generated);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -208,7 +208,7 @@ export default function GeneratorPage() {
     setSelectedIngredientForPairing(ingredientName);
     setPairingsLoading(true);
     try {
-      const result = await suggestFlavorPairings({ ingredient: ingredientName }, { token });
+      const result = await suggestFlavorPairings({ ingredient: ingredientName });
       setPairings(result.pairings);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -251,12 +251,12 @@ export default function GeneratorPage() {
         dietaryLabels: recipe.dietaryLabels,
         allergenWarnings: recipe.allergenWarnings,
         nutrition: recipe.nutrition,
-      }, { token });
+      });
 
       let finalRecipe = created;
 
       if (publishImmediately) {
-        finalRecipe = await publishRecipe(created.id, { token });
+        finalRecipe = await publishRecipe(created.id);
         setSaveSuccessMessage(`Recipe published successfully!`);
       } else {
         setSaveSuccessMessage(`Saved as draft successfully!`);

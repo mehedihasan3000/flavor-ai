@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useAuth } from "@/lib/auth-context";
 import { ApiError, adminListUsers } from "@/lib/api";
 import type { AdminUser, PaginatedResult, UserRole } from "@/lib/types";
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, Pagination, Select } from "@/components/ui";
@@ -9,8 +8,6 @@ import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, Pagination,
 const PAGE_SIZE = 20;
 
 export function AdminUsersPanel() {
-  const { token } = useAuth();
-
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [role, setRole] = useState<UserRole | "">("");
@@ -28,7 +25,7 @@ export function AdminUsersPanel() {
           setError(null);
         })
         .then(() =>
-          adminListUsers({ q: q || undefined, role: role || undefined, page, limit: PAGE_SIZE }, { token, signal }),
+          adminListUsers({ q: q || undefined, role: role || undefined, page, limit: PAGE_SIZE }, { signal }),
         )
         .then((data) => {
           setResult(data);
@@ -40,7 +37,7 @@ export function AdminUsersPanel() {
           setIsLoading(false);
         });
     },
-    [q, role, page, token],
+    [q, role, page],
   );
 
   useEffect(() => {

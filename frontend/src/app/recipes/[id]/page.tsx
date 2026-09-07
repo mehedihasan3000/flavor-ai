@@ -50,7 +50,7 @@ interface RecipeDetailPageProps {
 export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const toast = useToast();
 
   // Recipe load state
@@ -96,7 +96,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
         setIsLoading(true);
         setError(null);
       })
-      .then(() => getRecipe(id, { token, signal: controller.signal }))
+      .then(() => getRecipe(id, { signal: controller.signal }))
       .then((data) => {
         setRecipe(data);
         setServingsScale(data.servings || 1);
@@ -109,7 +109,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
       });
 
     return () => controller.abort();
-  }, [id, token, authLoading]);
+  }, [id, authLoading]);
 
   // Rating summary (public + myRating when signed in) and favorite status.
   const loadCommunityState = useCallback(
@@ -121,9 +121,9 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
         })
         .then(() =>
           Promise.all([
-            getRatingSummary(id, { token, signal }),
+            getRatingSummary(id, { signal }),
             isAuthenticated
-              ? getFavoriteStatus(id, { token, signal }).catch(() => ({ favorited: false }))
+              ? getFavoriteStatus(id, { signal }).catch(() => ({ favorited: false }))
               : Promise.resolve({ favorited: false }),
           ]),
         )
@@ -138,7 +138,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
           setRatingLoading(false);
         });
     },
-    [id, token, isAuthenticated],
+    [id, isAuthenticated],
   );
 
   useEffect(() => {
@@ -151,7 +151,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const handleRate = (value: RatingValue) => {
     setRatingLoading(true);
     setRatingError(null);
-    rateRecipe(id, { value }, { token })
+    rateRecipe(id, { value })
       .then(({ summary }) => {
         setRatingSummary(summary);
         setRecipe((prev) =>
@@ -168,8 +168,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const handleRemoveRating = () => {
     setRatingLoading(true);
     setRatingError(null);
-    deleteRating(id, { token })
-      .then(() => getRatingSummary(id, { token }))
+    deleteRating(id)
+      .then(() => getRatingSummary(id))
       .then((summary) => {
         setRatingSummary(summary);
         setRecipe((prev) =>
@@ -185,7 +185,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
 
   const handleToggleFavorite = () => {
     setFavoriteLoading(true);
-    const request = favorited ? removeFavorite(id, { token }) : addFavorite(id, { token });
+    const request = favorited ? removeFavorite(id) : addFavorite(id);
     request
       .then((res) => {
         setFavorited(!favorited);
@@ -213,7 +213,6 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     try {
       const result = await suggestFlavorPairings(
         { ingredient: ingredientName },
-        { token },
       );
       setPairings(result.pairings);
     } catch (err) {
@@ -236,8 +235,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     try {
       const updated =
         recipe.status === "published"
-          ? await unpublishRecipe(recipe.id, { token })
-          : await publishRecipe(recipe.id, { token });
+          ? await unpublishRecipe(recipe.id)
+          : await publishRecipe(recipe.id);
       setRecipe(updated);
       const successMsg =
         updated.status === "published"
@@ -262,7 +261,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     setActionError(null);
 
     try {
-      await deleteRecipe(recipe.id, { token });
+      await deleteRecipe(recipe.id);
       toast.success(`"${recipe.title}" was deleted.`, { title: "Recipe deleted" });
       router.push("/");
     } catch (err) {

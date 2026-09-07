@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useAuth } from "@/lib/auth-context";
 import { ApiError, adminDeleteRecipe, adminListRecipes, adminModerateRecipe } from "@/lib/api";
 import type { AdminRecipe, PaginatedResult, RecipeStatus } from "@/lib/types";
 import { formatEnumLabel } from "@/lib/format";
@@ -17,8 +16,6 @@ const STATUS_BADGE_VARIANT: Record<RecipeStatus, "success" | "warning" | "neutra
 };
 
 export function AdminRecipesPanel() {
-  const { token } = useAuth();
-
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<RecipeStatus | "">("");
@@ -42,7 +39,7 @@ export function AdminRecipesPanel() {
         .then(() =>
           adminListRecipes(
             { q: q || undefined, status: status || undefined, page, limit: PAGE_SIZE },
-            { token, signal },
+            { signal },
           ),
         )
         .then((data) => {
@@ -55,7 +52,7 @@ export function AdminRecipesPanel() {
           setIsLoading(false);
         });
     },
-    [q, status, page, token],
+    [q, status, page],
   );
 
   useEffect(() => {
@@ -74,7 +71,7 @@ export function AdminRecipesPanel() {
     const nextStatus = recipe.status === "published" ? "hidden" : "published";
     setActioningId(recipe.id);
     setActionError(null);
-    adminModerateRecipe(recipe.id, nextStatus, { token })
+    adminModerateRecipe(recipe.id, nextStatus)
       .then((updated) => {
         setResult((prev) =>
           prev ? { ...prev, items: prev.items.map((r) => (r.id === updated.id ? updated : r)) } : prev,
@@ -90,7 +87,7 @@ export function AdminRecipesPanel() {
   const handleDelete = (recipeId: string) => {
     setActioningId(recipeId);
     setActionError(null);
-    adminDeleteRecipe(recipeId, { token })
+    adminDeleteRecipe(recipeId)
       .then(() => {
         setResult((prev) =>
           prev

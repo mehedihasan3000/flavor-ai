@@ -126,9 +126,8 @@ function validate(form: FormState): FieldErrors {
   return errors;
 }
 
-export function ProfileForm({ token: explicitToken }: { token?: string }) {
-  const { token: authContextToken, isLoading: isAuthLoading, patchUser } = useAuth();
-  const token = explicitToken ?? authContextToken;
+export function ProfileForm() {
+  const { isAuthenticated, isLoading: isAuthLoading, patchUser } = useAuth();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -153,15 +152,14 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
 
   const loadProfile = useCallback(
     (signal?: AbortSignal) => {
-      if (!token) {
+      if (!isAuthenticated) {
         return Promise.resolve().then(() => {
           setLoadErrorCode("UNAUTHORIZED");
           setLoadStatus("error");
         });
       }
 
-      return getMyProfile({ signal, token })
-
+      return getMyProfile({ signal })
         .then((data) => {
           setProfile(data);
           setForm(profileToForm(data));
@@ -180,7 +178,7 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
           setLoadStatus("error");
         });
     },
-    [token],
+    [isAuthenticated],
   );
 
   useEffect(() => {
@@ -217,7 +215,7 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
       e.target.value = "";
       return;
     }
-    if (!token) {
+    if (!isAuthenticated) {
       setAvatarUploadError("Please sign in to upload images.");
       e.target.value = "";
       return;
@@ -229,7 +227,7 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
       reader.onload = async (ev) => {
         const base64 = ev.target?.result as string;
         try {
-          const result = await uploadImage(base64, file.type, file.name, { token });
+          const result = await uploadImage(base64, file.type, file.name);
           setField("avatarUrl", result.url);
           setFieldErrors((prev) => {
             const next = { ...prev };
@@ -293,7 +291,7 @@ export function ProfileForm({ token: explicitToken }: { token?: string }) {
         preferences,
       };
 
-      const updated = await updateMyProfile(payload, { token });
+      const updated = await updateMyProfile(payload);
       setProfile(updated);
       setForm(profileToForm(updated));
       patchUser({ name: updated.name, avatarUrl: updated.avatarUrl ?? null });

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth-context";
 import { ApiError, adminDeleteComment, adminListComments, adminModerateComment } from "@/lib/api";
 import type { AdminComment, CommentStatus, PaginatedResult } from "@/lib/types";
 import { Badge, Button, EmptyState, ErrorState, LoadingState, Pagination, Select } from "@/components/ui";
@@ -9,8 +8,6 @@ import { Badge, Button, EmptyState, ErrorState, LoadingState, Pagination, Select
 const PAGE_SIZE = 20;
 
 export function AdminCommentsPanel() {
-  const { token } = useAuth();
-
   const [moderationStatus, setModerationStatus] = useState<CommentStatus | "">("");
   const [page, setPage] = useState(1);
 
@@ -30,7 +27,7 @@ export function AdminCommentsPanel() {
           setError(null);
         })
         .then(() =>
-          adminListComments({ moderationStatus: moderationStatus || undefined, page, limit: PAGE_SIZE }, { token, signal }),
+          adminListComments({ moderationStatus: moderationStatus || undefined, page, limit: PAGE_SIZE }, { signal }),
         )
         .then((data) => {
           setResult(data);
@@ -42,7 +39,7 @@ export function AdminCommentsPanel() {
           setIsLoading(false);
         });
     },
-    [moderationStatus, page, token],
+    [moderationStatus, page],
   );
 
   useEffect(() => {
@@ -55,7 +52,7 @@ export function AdminCommentsPanel() {
     const next: CommentStatus = comment.moderationStatus === "visible" ? "moderated" : "visible";
     setActioningId(comment.id);
     setActionError(null);
-    adminModerateComment(comment.id, next, { token })
+    adminModerateComment(comment.id, next)
       .then((updated) => {
         setResult((prev) =>
           prev ? { ...prev, items: prev.items.map((c) => (c.id === updated.id ? updated : c)) } : prev,
@@ -71,7 +68,7 @@ export function AdminCommentsPanel() {
   const handleDelete = (commentId: string) => {
     setActioningId(commentId);
     setActionError(null);
-    adminDeleteComment(commentId, { token })
+    adminDeleteComment(commentId)
       .then(() => {
         setResult((prev) =>
           prev

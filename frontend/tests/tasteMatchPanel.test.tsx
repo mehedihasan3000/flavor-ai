@@ -41,7 +41,8 @@ vi.mock("../src/lib/api", async () => {
 function mockAuth(isAuthenticated: boolean) {
   vi.spyOn(authContext, "useAuth").mockReturnValue({
     user: isAuthenticated ? { id: "u1", email: "chef@example.com", name: "Chef", role: "user" } : null,
-    token: isAuthenticated ? "valid-jwt-token" : null,
+    // Client JS never holds a token post cookie-migration (HttpOnly session cookie instead)
+    token: null,
     isAuthenticated,
     isLoading: false,
     signIn: vi.fn(),
@@ -97,7 +98,6 @@ describe("TasteMatchPanel", () => {
     await waitFor(() => {
       expect(matchRecipesToTaste).toHaveBeenCalledWith(
         expect.objectContaining({ tastes: ["spicy", "umami"], limit: 12 }),
-        expect.objectContaining({ token: "valid-jwt-token" }),
       );
     });
 

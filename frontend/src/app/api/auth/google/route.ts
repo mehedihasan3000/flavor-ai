@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { mintAccessToken } from "@/lib/jwt";
+import {
+  COOKIE_NAME,
+  FLAG_COOKIE_NAME,
+  buildSessionCookieOptions,
+  buildFlagCookieOptions,
+} from "@/lib/cookies";
 
 interface GoogleTokenInfo {
   iss: string;
@@ -126,8 +132,9 @@ export async function POST(request: Request) {
       avatarUrl: picture,
     });
 
-    return NextResponse.json({
-      token,
+    // Set the JWT as an HttpOnly cookie (inaccessible to client JS) and a
+    // non-HttpOnly flag cookie so the client can check "am I logged in?".
+    const res = NextResponse.json({
       user: {
         id: providerId,
         email,
@@ -136,6 +143,9 @@ export async function POST(request: Request) {
         avatarUrl: picture,
       },
     });
+    res.cookies.set(COOKIE_NAME, token, buildSessionCookieOptions());
+    res.cookies.set(FLAG_COOKIE_NAME, "1", buildFlagCookieOptions());
+    return res;
   } catch (error) {
     console.error("[auth:google] error:", error);
     return NextResponse.json(
