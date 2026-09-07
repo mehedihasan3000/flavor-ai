@@ -42,7 +42,7 @@ function AuthorAvatar({ comment }: { comment: Comment }) {
 
 /** Comment thread for a recipe: list + post/edit/delete (FR-COMMENT-01..05). */
 export function CommentSection({ recipeId, onCountChange }: CommentSectionProps) {
-  const { user, token, isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [total, setTotal] = useState(0);
@@ -116,7 +116,7 @@ export function CommentSection({ recipeId, onCountChange }: CommentSectionProps)
 
     setPosting(true);
     setPostError(null);
-    createComment(recipeId, { body }, { token })
+    createComment(recipeId, { body })
       .then((created) => {
         // Comments sort oldest-first, so a freshly posted comment belongs at
         // the end of whatever is currently loaded — no refetch needed.
@@ -152,7 +152,7 @@ export function CommentSection({ recipeId, onCountChange }: CommentSectionProps)
 
     setSavingEdit(true);
     setActionError(null);
-    updateComment(commentId, { body }, { token })
+    updateComment(commentId, { body })
       .then((updated) => {
         setComments((prev) => prev.map((c) => (c.id === commentId ? updated : c)));
         setSavingEdit(false);
@@ -167,7 +167,7 @@ export function CommentSection({ recipeId, onCountChange }: CommentSectionProps)
   const handleDelete = (commentId: string) => {
     setDeletingId(commentId);
     setActionError(null);
-    deleteComment(commentId, { token })
+    deleteComment(commentId)
       .then(() => {
         setComments((prev) => prev.filter((c) => c.id !== commentId));
         setTotal((t) => {

@@ -7,11 +7,9 @@ import { PhotoDropzone } from "@/components/nutrition/photo-dropzone";
 import { NutritionBreakdownView } from "@/components/nutrition/nutrition-breakdown-view";
 import { Button, Input, Textarea, Alert, Spinner } from "@/components/ui";
 import { analyzeFoodPhoto } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
 import type { FoodPhotoAnalysisResult } from "@/lib/types";
 
 export default function NutritionAnalyzerPage() {
-  const { token } = useAuth();
 
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>("image/jpeg");
@@ -57,16 +55,13 @@ export default function NutritionAnalyzerPage() {
     setError(null);
 
     try {
-      const result = await analyzeFoodPhoto(
-        {
-          image: selectedImage,
-          mimeType,
-          filename,
-          mealContext: mealContext.trim() || undefined,
-          notes: notes.trim() || undefined,
-        },
-        token ? { token } : {},
-      );
+      const result = await analyzeFoodPhoto({
+        image: selectedImage,
+        mimeType,
+        filename,
+        mealContext: mealContext.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
 
       setAnalysisResult(result);
     } catch (err: unknown) {

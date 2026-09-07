@@ -38,15 +38,24 @@ import type {
   UserProfile,
 } from "./types";
 
-const DEFAULT_BASE_URL = "http://localhost:4000/api/v1";
+const DEFAULT_API_URL = "http://localhost:4000/api/v1";
 
-function resolveBaseUrl() {
+/**
+ * In browser environments, API calls route through the Next.js proxy at `/api/proxy/...`.
+ * The proxy reads the HttpOnly session cookie and forwards it as an `Authorization: Bearer`
+ * header to the Express backend.
+ *
+ * In server environments (SSR / Server Actions / scripts), calls target the Express backend directly
+ * and rely on explicit `options.token`.
+ */
+function getBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return "/api/proxy";
+  }
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (!raw) return DEFAULT_BASE_URL;
+  if (!raw) return DEFAULT_API_URL;
   return raw.replace(/\/+$/, "");
 }
-
-const BASE_URL = resolveBaseUrl();
 
 export class ApiError extends Error {
   readonly status: number;
@@ -137,9 +146,12 @@ async function toApiError(response: Response): Promise<ApiError> {
 export interface RequestOptions {
   signal?: AbortSignal;
   /**
-   * Explicit Bearer token. When omitted, the persisted session token
-   * (AuthProvider's localStorage entry) is attached automatically.
-   * Pass `null` to force an unauthenticated request.
+   * Explicit Bearer token for server-side / SSR usage where cookies are not
+   * available.  When omitted (the common case in client components), the
+   * proxy handles auth automatically via the HttpOnly session cookie.
+   * NOTE: passing `null` is identical to omitting it — in the browser the
+   * session cookie is always sent to the same-origin proxy, so there is no
+   * way to force an unauthenticated request from client components.
    */
   token?: string | null;
 }
@@ -151,33 +163,26 @@ interface InternalRequestOptions extends RequestOptions {
   body?: unknown;
 }
 
-// Must mirror STORAGE_KEY in lib/auth-context.tsx
-const AUTH_STORAGE_KEY = "flavorai_auth_token";
-
-function resolveAuthToken(options: InternalRequestOptions): string | null {
-  if (options.token !== undefined) return options.token;
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(AUTH_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
 async function request<T>(path: string, options: InternalRequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  const authToken = resolveAuthToken(options);
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+  // Explicit token override (for SSR / server components that don't have cookies)
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
 
   let response: Response;
+  const isBrowser = typeof window !== "undefined";
   try {
-    response = await fetch(`${BASE_URL}${path}`, {
+    response = await fetch(`${getBaseUrl()}${path}`, {
       method: options.method ?? "GET",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: options.signal,
       cache: "no-store",
+      // Ensure cookies are sent to the same-origin proxy in the browser
+      ...(isBrowser ? { credentials: "same-origin" as RequestCredentials } : {}),
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
