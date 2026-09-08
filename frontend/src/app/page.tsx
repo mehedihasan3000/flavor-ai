@@ -1,28 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, Flame, Star } from "@gravity-ui/icons";
-import { Badge, buttonStyles, Card, EmptyState } from "@/components/ui";
+import { ArrowRight, Flame } from "@gravity-ui/icons";
+import { Badge, buttonStyles, Card } from "@/components/ui";
+import { HowItWorks, FeaturedRecipes, AiHighlights } from "@/components/home";
 
 const containerClass = "mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8";
 
 const HERO_INGREDIENTS = ["chicken breast", "garlic", "olive oil", "spinach"] as const;
-
-const STEPS = [
-  {
-    title: "Share your pantry",
-    description:
-      "Add the ingredients you already have, plus your diet, allergies, cooking time, and skill level.",
-  },
-  {
-    title: "Get a personalized recipe",
-    description:
-      "AI drafts a complete recipe with ordered steps, nutrition estimates, and any missing ingredients you may need.",
-  },
-  {
-    title: "Cook, rate, and share",
-    description:
-      "Save it privately, publish it to the community, and collect ratings, comments, and favorites.",
-  },
-] as const;
 
 function Hero() {
   return (
@@ -77,78 +60,6 @@ function Hero() {
   );
 }
 
-function HowItWorks() {
-  return (
-    <section
-      aria-labelledby="how-it-works-heading"
-      className={`${containerClass} border-t border-border py-16 sm:py-20`}
-    >
-      <div className="max-w-2xl">
-        <h2 id="how-it-works-heading" className="text-2xl font-bold tracking-tight text-heading sm:text-3xl">
-          From pantry to plate in three steps
-        </h2>
-        <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          FlavorAI starts with what you have, not a shopping list.
-        </p>
-      </div>
-
-      <ol className="mt-10 grid list-none gap-10 sm:grid-cols-3 sm:gap-6">
-        {STEPS.map((step, index) => (
-          <li key={step.title} className="flex flex-col items-start">
-            <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-sm font-semibold text-primary-strong">
-              {index + 1}
-            </span>
-            <h3 className="mt-4 text-base font-semibold text-heading">{step.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              {step.description}
-            </p>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-function FeaturedRecipes() {
-  return (
-    <section
-      aria-labelledby="featured-heading"
-      className={`${containerClass} border-t border-border py-16 sm:py-20`}
-    >
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h2 id="featured-heading" className="text-2xl font-bold tracking-tight text-heading sm:text-3xl">
-            From the community
-          </h2>
-          <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            Discover recipes shared by other home cooks.
-          </p>
-        </div>
-        <Link
-          href="/recipes"
-          className="hidden shrink-0 items-center gap-1.5 rounded-button text-sm font-medium text-primary-strong transition-colors hover:text-primary-deep focus-visible:text-primary-deep sm:inline-flex"
-        >
-          Browse all recipes
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </Link>
-      </div>
-
-      <div className="mt-8">
-        <EmptyState
-          icon={<Star />}
-          title="No published recipes yet"
-          description="Fresh community recipes are on the way. Be the first to share one with the world."
-          action={
-            <Link href="/generator" className={buttonStyles()}>
-              Generate the first one
-            </Link>
-          }
-        />
-      </div>
-    </section>
-  );
-}
-
 function CallToActionBand() {
   return (
     <section aria-labelledby="cta-heading" className={`${containerClass} pb-20 pt-4`}>
@@ -175,8 +86,15 @@ export default function HomePage() {
   return (
     <>
       <Hero />
-      <HowItWorks />
-      <FeaturedRecipes />
+      <div className="border-t border-border">
+        <HowItWorks />
+      </div>
+      <div className="border-t border-border bg-background">
+        <AiHighlights />
+      </div>
+      <div className="border-t border-border bg-card">
+        <FeaturedRecipes />
+      </div>
       <CallToActionBand />
     </>
   );
