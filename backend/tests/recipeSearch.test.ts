@@ -19,9 +19,12 @@ function signToken(userId: string, role: "user" | "admin" = "user"): string {
   });
 }
 
-async function createUser(name: string, email: string): Promise<string> {
-  const user = await UserModel.create({ name, email });
-  return signToken(user._id.toString());
+async function createUser(name: string, email: string): Promise<{ id: string; token: string }> {
+  // authenticate() looks users up by providerId (the external auth subject),
+  // not Mongo _id — must be set for a real request to pass requireAuth.
+  const providerId = new mongoose.Types.ObjectId().toString();
+  const user = await UserModel.create({ name, email, providerId });
+  return { id: user._id.toString(), token: signToken(providerId) };
 }
 
 const validRecipeBody = {
@@ -56,11 +59,13 @@ async function seedRecipe(
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
   await mongoose.connect(mongo.getUri());
-});
+}, 30000);
 
 afterAll(async () => {
   await mongoose.disconnect();
-  await mongo.stop();
+  if (mongo) {
+    await mongo.stop();
+  }
 });
 
 beforeEach(async () => {
@@ -69,7 +74,7 @@ beforeEach(async () => {
 
 describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
   it("returns only published recipes", async () => {
-    const token = await createUser("Ada", "ada@example.com");
+    const { token } = await createUser("Ada", "ada@example.com");
     await seedRecipe(token, { slug: "published-soup", title: "Published Soup" });
     await request(app)
       .post("/api/v1/recipes")
@@ -83,7 +88,7 @@ describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
   });
 
   it("returns the pagination envelope", async () => {
-    const token = await createUser("Ada", "ada@example.com");
+    const { token } = await createUser("Ada", "ada@example.com");
     await seedRecipe(token, { slug: "recipe-a", title: "Dish A" });
     await seedRecipe(token, { slug: "recipe-b", title: "Dish B" });
     await seedRecipe(token, { slug: "recipe-c", title: "Dish C" });
@@ -97,7 +102,7 @@ describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
   });
 
   it("searches keywords across title, summary, and ingredients (FR-SEARCH-02)", async () => {
-    const token = await createUser("Ada", "ada@example.com");
+    const { token } = await createUser("Ada", "ada@example.com");
     await seedRecipe(token, {
       slug: "spinach-chicken",
       title: "Garlic Spinach Chicken",
@@ -119,7 +124,7 @@ describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
   });
 
   it("filters by category, cuisine, diet, and difficulty (FR-SEARCH-03)", async () => {
-    const token = await createUser("Ada", "ada@example.com");
+    const { token } = await createUser("Ada", "ada@example.com");
     await seedRecipe(token, {
       slug: "med-chicken",
       title: "Mediterranean Chicken",
@@ -153,7 +158,7 @@ describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
   });
 
   it("filters by max cooking time (totalTimeMinutes)", async () => {
-    const token = await createUser("Ada", "ada@example.com");
+    const { token } = await createUser("Ada", "ada@example.com");
     await seedRecipe(token, {
       slug: "quick",
       title: "Quick Dish",
@@ -173,7 +178,7 @@ describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
   });
 
   it("sorts by newest, highest-rated, and most-popular (FR-SEARCH-04)", async () => {
-    const token = await createUser("Ada", "ada@example.com");
+    const { token } = await createUser("Ada", "ada@example.com");
     const a = await seedRecipe(token, { slug: "recipe-a", title: "Dish A" });
     const b = await seedRecipe(token, { slug: "recipe-b", title: "Dish B" });
     const c = await seedRecipe(token, { slug: "recipe-c", title: "Dish C" });
@@ -200,7 +205,7 @@ describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
   });
 
   it("paginates results (FR-SEARCH-05)", async () => {
-    const token = await createUser("Ada", "ada@example.com");
+    const { token } = await createUser("Ada", "ada@example.com");
     for (let i = 0; i < 5; i += 1) {
       await seedRecipe(token, { slug: `recipe-${i}`, title: `Recipe ${i}` });
     }
@@ -218,5 +223,56 @@ describe("GET /recipes — public search (FR-SEARCH-01..05)", () => {
     const res = await request(app).get("/api/v1/recipes?limit=500");
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION_ERROR");
+  });
+});
+
+describe("GET /recipes?mine=true — own recipes across all statuses (additive)", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/v1/recipes?mine=true");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns only the caller's own recipes, including drafts", async () => {
+    const ada = await createUser("Ada", "ada@example.com");
+    const zed = await createUser("Zed", "zed@example.com");
+
+    await seedRecipe(ada.token, { slug: "ada-published", title: "Ada Published" });
+    await request(app)
+      .post("/api/v1/recipes")
+      .set("Authorization", `Bearer ${ada.token}`)
+      .send({ ...validRecipeBody, slug: "ada-draft", title: "Ada Draft" });
+    await seedRecipe(zed.token, { slug: "zed-published", title: "Zed Published" });
+
+    const res = await request(app)
+      .get("/api/v1/recipes?mine=true")
+      .set("Authorization", `Bearer ${ada.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+    const titles = res.body.items.map((item: { title: string }) => item.title).sort();
+    expect(titles).toEqual(["Ada Draft", "Ada Published"]);
+  });
+
+  it("honors status only alongside mine=true", async () => {
+    const ada = await createUser("Ada", "ada@example.com");
+    await seedRecipe(ada.token, { slug: "ada-published-2", title: "Ada Published 2" });
+    await request(app)
+      .post("/api/v1/recipes")
+      .set("Authorization", `Bearer ${ada.token}`)
+      .send({ ...validRecipeBody, slug: "ada-draft-2", title: "Ada Draft 2" });
+
+    const drafts = await request(app)
+      .get("/api/v1/recipes?mine=true&status=draft")
+      .set("Authorization", `Bearer ${ada.token}`);
+    expect(drafts.body.total).toBe(1);
+    expect(drafts.body.items[0].title).toBe("Ada Draft 2");
+
+    // Without mine=true, status is ignored and public search stays published-only.
+    const publicWithStatus = await request(app).get("/api/v1/recipes?status=draft");
+    expect(publicWithStatus.status).toBe(200);
+    expect(
+      (publicWithStatus.body.items as { status: string }[]).every((r) => r.status === "published"),
+    ).toBe(true);
   });
 });

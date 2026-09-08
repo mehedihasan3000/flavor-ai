@@ -11,6 +11,7 @@ out/
 .env
 .env.local
 .env.*.local
+.env.bak
 
 # Logs
 *.log
@@ -24,3 +25,7 @@ Thumbs.db
 
 # Coverage / test artifacts
 coverage/
+
+# Miscellaneous
+error.md
+info.md

@@ -11,7 +11,7 @@ function isValidObjectId(value: string): boolean {
 }
 
 /** Serializes a Recipe doc into the frozen contract shape (docs/API_CONTRACT.md). */
-function toRecipeResponse(recipe: HydratedDocument<Recipe>) {
+export function toRecipeResponse(recipe: HydratedDocument<Recipe>) {
   return {
     id: recipe._id.toString(),
     owner: recipe.owner.toString(),
@@ -48,11 +48,29 @@ function toRecipeResponse(recipe: HydratedDocument<Recipe>) {
  * GET /recipes — public, paginated search over published recipes (FR-SEARCH).
  * Supports q (text index on title/summary/ingredients), category, cuisine,
  * diet, difficulty, maxCookingTimeMinutes, sort, page, limit.
+ *
+ * **Additive (post-freeze):** `?mine=true` (requires auth, via `optionalAuth`
+ * on the route) switches the base filter from `status: "published"` to the
+ * caller's own `owner`, across every status — this is what powers the
+ * frontend dashboard's "my drafts/published/hidden" view, which otherwise
+ * had no endpoint (the public filter deliberately never leaks drafts,
+ * Business Rules 3/4/10). `status` is only honored alongside `mine=true`;
+ * outside of `mine`, status stays hardcoded to `"published"` regardless of
+ * whether a `status` query param is sent, so public discovery is unaffected.
  */
 export const searchRecipes = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as RecipeSearchQuery;
 
-  const filter: FilterQuery<Recipe> = { status: "published" };
+  const filter: FilterQuery<Recipe> = {};
+  if (query.mine) {
+    if (!req.user) {
+      throw new ApiError(401, "UNAUTHORIZED", "Authentication required to view your own recipes.");
+    }
+    filter.owner = req.user.id;
+    if (query.status) filter.status = query.status;
+  } else {
+    filter.status = "published";
+  }
 
   if (query.q?.trim()) {
     filter.$text = { $search: query.q.trim() };
@@ -65,7 +83,9 @@ export const searchRecipes = asyncHandler(async (req: Request, res: Response) =>
     filter.totalTimeMinutes = { $lte: query.maxCookingTimeMinutes };
   }
 
-  const sort = buildSort(query.sort);
+  // Drafts/hidden recipes have no publishedAt, which sorts unpredictably
+  // under the public "newest" sort — "mine" always sorts by createdAt instead.
+  const sort = query.mine ? { createdAt: -1 as const } : buildSort(query.sort);
   const skip = (query.page - 1) * query.limit;
 
   const [items, total] = await Promise.all([

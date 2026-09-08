@@ -1,6 +1,16 @@
 import type { Request, Response } from "express";
-import { generateAIRecipe, generateFlavorPairings } from "../services/aiService.js";
-import { AIRecipePromptInput, FlavorPairingInput } from "../types/index.js";
+import {
+  analyzeFoodPhoto,
+  generateAIRecipe,
+  generateFlavorPairings,
+  matchRecipesToTaste,
+} from "../services/aiService.js";
+import {
+  AIRecipePromptInput,
+  FlavorPairingInput,
+  FoodPhotoAnalysisInput,
+  TasteMatchInput,
+} from "../types/index.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 /**
@@ -25,6 +35,32 @@ export const suggestFlavorPairings = asyncHandler(async (req: Request, res: Resp
   const userId = req.user?.id;
 
   const result = await generateFlavorPairings(validatedInput, userId);
+
+  res.status(200).json(result);
+});
+
+/**
+ * Analyzes a food photo to estimate nutrition and detect ingredients.
+ * POST /api/v1/ai/nutrition/analyze-photo (Protected)
+ */
+export const analyzePhotoNutrition = asyncHandler(async (req: Request, res: Response) => {
+  const validatedInput = FoodPhotoAnalysisInput.parse(req.body);
+  const userId = req.user?.id;
+
+  const result = await analyzeFoodPhoto(validatedInput, userId);
+
+  res.status(200).json(result);
+});
+
+/**
+ * Recommends existing published recipes matching the caller's taste preferences.
+ * POST /api/v1/ai/recipes/taste-match (Protected)
+ */
+export const matchTasteToRecipes = asyncHandler(async (req: Request, res: Response) => {
+  const validatedInput = TasteMatchInput.parse(req.body);
+  const userId = req.user?.id;
+
+  const result = await matchRecipesToTaste(validatedInput, userId);
 
   res.status(200).json(result);
 });

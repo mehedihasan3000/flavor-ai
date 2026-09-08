@@ -1,14 +1,36 @@
 import type {
+  AdminComment,
+  AdminCommentSearchQuery,
+  AdminRecipe,
+  AdminRecipeSearchQuery,
+  AdminUser,
+  AdminUserSearchQuery,
   AIRecipeOutput,
   AIRecipePromptInput,
+  Comment,
+  CommentStatus,
+  CreateCommentInput,
+  CreateRatingInput,
   CreateRecipeInput,
+  DashboardStats,
   ErrorCode,
   ErrorEnvelope,
+  FavoriteItem,
+  FavoriteStatus,
   FlavorPairingInput,
   FlavorPairingSuggestion,
+  FoodPhotoAnalysisInput,
+  FoodPhotoAnalysisResult,
   PaginatedResult,
+  PaginationQuery,
+  PantryMatchResult,
+  Rating,
+  RatingSummary,
   Recipe,
   RecipeSearchQuery,
+  TasteMatchInput,
+  TasteMatchResult,
+  UpdateCommentInput,
   UpdateProfileInput,
   UpdateRecipeInput,
   UserProfile,
@@ -112,6 +134,11 @@ async function toApiError(response: Response): Promise<ApiError> {
 
 export interface RequestOptions {
   signal?: AbortSignal;
+  /**
+   * Explicit Bearer token. When omitted, the persisted session token
+   * (AuthProvider's localStorage entry) is attached automatically.
+   * Pass `null` to force an unauthenticated request.
+   */
   token?: string | null;
 }
 
@@ -122,10 +149,24 @@ interface InternalRequestOptions extends RequestOptions {
   body?: unknown;
 }
 
+// Must mirror STORAGE_KEY in lib/auth-context.tsx
+const AUTH_STORAGE_KEY = "flavorai_auth_token";
+
+function resolveAuthToken(options: InternalRequestOptions): string | null {
+  if (options.token !== undefined) return options.token;
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(AUTH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 async function request<T>(path: string, options: InternalRequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  if (options.token) headers.Authorization = `Bearer ${options.token}`;
+  const authToken = resolveAuthToken(options);
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
   let response: Response;
   try {
@@ -171,6 +212,10 @@ export function updateMyProfile(
   return request<UserProfile>("/users/me", { ...options, method: "PATCH", body: input });
 }
 
+export function getMyStats(options: RequestOptions = {}): Promise<DashboardStats> {
+  return request<DashboardStats>("/users/me/stats", options);
+}
+
 export function listRecipes(
   query: RecipeSearchQuery = {},
   options: RequestOptions = {},
@@ -184,22 +229,51 @@ export function listRecipes(
   return request<PaginatedResult<Recipe>>(`/recipes${search ? `?${search}` : ""}`, options);
 }
 
-export function generateAIRecipe(
+export async function generateAIRecipe(
   input: AIRecipePromptInput,
   options: RequestOptions = {},
 ): Promise<AIRecipeOutput> {
-  return request<AIRecipeOutput>("/ai/recipes/generate", {
+  // Backend wraps the output: { recipe, pantryMatch } — unwrap for callers
+  const res = await request<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }>(
+    "/ai/recipes/generate",
+    {
+      ...options,
+      method: "POST",
+      body: input,
+    },
+  );
+  return res.recipe;
+}
+
+export async function suggestFlavorPairings(
+  input: FlavorPairingInput,
+  options: RequestOptions = {},
+): Promise<{ pairings: FlavorPairingSuggestion[] }> {
+  // Backend returns { suggestions } — normalize to the client-side shape
+  const res = await request<{ suggestions: FlavorPairingSuggestion[] }>("/ai/flavor-pairings", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return { pairings: res.suggestions ?? [] };
+}
+
+export async function matchRecipesToTaste(
+  input: TasteMatchInput,
+  options: RequestOptions = {},
+): Promise<{ matches: TasteMatchResult[] }> {
+  return request<{ matches: TasteMatchResult[] }>("/ai/recipes/taste-match", {
     ...options,
     method: "POST",
     body: input,
   });
 }
 
-export function suggestFlavorPairings(
-  input: FlavorPairingInput,
+export async function analyzeFoodPhoto(
+  input: FoodPhotoAnalysisInput,
   options: RequestOptions = {},
-): Promise<{ pairings: FlavorPairingSuggestion[] }> {
-  return request<{ pairings: FlavorPairingSuggestion[] }>("/ai/flavor-pairings", {
+): Promise<FoodPhotoAnalysisResult> {
+  return request<FoodPhotoAnalysisResult>("/ai/nutrition/analyze-photo", {
     ...options,
     method: "POST",
     body: input,
@@ -268,16 +342,211 @@ export async function unpublishRecipe(
   return res.recipe;
 }
 
-export function uploadImage(
+export async function uploadImage(
   base64Data: string,
   mimeType?: string,
   filename?: string,
   options: RequestOptions = {},
 ): Promise<{ url: string; deleteUrl?: string }> {
-  return request<{ url: string; deleteUrl?: string }>("/upload/image", {
+  // Backend returns { imageUrl } — normalize to the client-side shape
+  const res = await request<{ imageUrl: string; deleteUrl?: string }>("/upload/image", {
     ...options,
     method: "POST",
     body: { image: base64Data, mimeType, filename },
   });
+  return { url: res.imageUrl, deleteUrl: res.deleteUrl };
+}
+
+// ─── Ratings (FR-RATE-01..05) ───────────────────────────────────────────────
+
+/** Public summary; includes `myRating` when `options.token` is a valid session. */
+export function getRatingSummary(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<RatingSummary> {
+  return request<RatingSummary>(`/recipes/${recipeId}/ratings`, options);
+}
+
+export function rateRecipe(
+  recipeId: string,
+  input: CreateRatingInput,
+  options: RequestOptions = {},
+): Promise<{ rating: Rating; summary: RatingSummary }> {
+  return request<{ rating: Rating; summary: RatingSummary }>(`/recipes/${recipeId}/ratings`, {
+    ...options,
+    method: "PUT",
+    body: input,
+  });
+}
+
+export function deleteRating(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/recipes/${recipeId}/ratings`, {
+    ...options,
+    method: "DELETE",
+  });
+}
+
+// ─── Favorites (FR-FAV-01..04) ──────────────────────────────────────────────
+
+export function getFavoriteStatus(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<FavoriteStatus> {
+  return request<FavoriteStatus>(`/favorites/${recipeId}`, options);
+}
+
+export function addFavorite(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<{ favorite: { id: string; recipe: string; user: string; createdAt: string }; favoriteCount: number }> {
+  return request(`/favorites/${recipeId}`, { ...options, method: "PUT" });
+}
+
+export function removeFavorite(
+  recipeId: string,
+  options: RequestOptions = {},
+): Promise<{ success: true; favoriteCount: number }> {
+  return request(`/favorites/${recipeId}`, { ...options, method: "DELETE" });
+}
+
+export function listFavorites(
+  query: PaginationQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<FavoriteItem>> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    params.set(key, String(value));
+  }
+  const search = params.toString();
+  return request<PaginatedResult<FavoriteItem>>(`/favorites${search ? `?${search}` : ""}`, options);
+}
+
+// ─── Comments (FR-COMMENT-01..05) ───────────────────────────────────────────
+
+export function listComments(
+  recipeId: string,
+  query: PaginationQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<Comment>> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    params.set(key, String(value));
+  }
+  const search = params.toString();
+  return request<PaginatedResult<Comment>>(
+    `/recipes/${recipeId}/comments${search ? `?${search}` : ""}`,
+    options,
+  );
+}
+
+export async function createComment(
+  recipeId: string,
+  input: CreateCommentInput,
+  options: RequestOptions = {},
+): Promise<Comment> {
+  const res = await request<{ comment: Comment }>(`/recipes/${recipeId}/comments`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.comment;
+}
+
+export async function updateComment(
+  commentId: string,
+  input: UpdateCommentInput,
+  options: RequestOptions = {},
+): Promise<Comment> {
+  const res = await request<{ comment: Comment }>(`/comments/${commentId}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+  return res.comment;
+}
+
+export function deleteComment(
+  commentId: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/comments/${commentId}`, { ...options, method: "DELETE" });
+}
+
+// ─── Admin (FR-ADMIN-01..04) ────────────────────────────────────────────────
+
+function toQueryString(query: object): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
+    if (value === undefined || value === "") continue;
+    params.set(key, String(value));
+  }
+  const search = params.toString();
+  return search ? `?${search}` : "";
+}
+
+export function adminListUsers(
+  query: AdminUserSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<AdminUser>> {
+  return request<PaginatedResult<AdminUser>>(`/admin/users${toQueryString(query)}`, options);
+}
+
+export function adminListRecipes(
+  query: AdminRecipeSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<AdminRecipe>> {
+  return request<PaginatedResult<AdminRecipe>>(`/admin/recipes${toQueryString(query)}`, options);
+}
+
+export async function adminModerateRecipe(
+  id: string,
+  status: "published" | "hidden",
+  options: RequestOptions = {},
+): Promise<AdminRecipe> {
+  const res = await request<{ recipe: AdminRecipe }>(`/admin/recipes/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: { status },
+  });
+  return res.recipe;
+}
+
+export function adminDeleteRecipe(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/admin/recipes/${id}`, { ...options, method: "DELETE" });
+}
+
+export function adminListComments(
+  query: AdminCommentSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<AdminComment>> {
+  return request<PaginatedResult<AdminComment>>(`/admin/comments${toQueryString(query)}`, options);
+}
+
+export async function adminModerateComment(
+  id: string,
+  moderationStatus: CommentStatus,
+  options: RequestOptions = {},
+): Promise<AdminComment> {
+  const res = await request<{ comment: AdminComment }>(`/admin/comments/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: { moderationStatus },
+  });
+  return res.comment;
+}
+
+export function adminDeleteComment(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/admin/comments/${id}`, { ...options, method: "DELETE" });
 }
 

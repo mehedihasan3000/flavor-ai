@@ -26,10 +26,16 @@ function Hero() {
             <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
           <Link
-            href="/recipes"
+            href="/nutrition-analyzer"
             className={buttonStyles({ variant: "outline", size: "lg" })}
           >
-            Browse community recipes
+            Photo Nutrition Analyzer
+          </Link>
+          <Link
+            href="/recipes"
+            className={buttonStyles({ variant: "ghost", size: "lg" })}
+          >
+            Browse recipes
           </Link>
         </div>
       </div>

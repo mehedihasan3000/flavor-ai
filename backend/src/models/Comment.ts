@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const commentSchema = new Schema(
   {
@@ -14,4 +14,4 @@ commentSchema.index({ recipe: 1, createdAt: 1 });
 
 export type Comment = InferSchemaType<typeof commentSchema>;
 
-export const CommentModel = models.Comment || model("Comment", commentSchema);
+export const CommentModel = mongoose.models.Comment || model("Comment", commentSchema);

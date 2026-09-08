@@ -24,6 +24,9 @@ export type RecipeCategory =
   | "baking"
   | "beverage";
 
+export type TasteProfile = "spicy" | "sweet" | "salty" | "sour" | "bitter" | "umami";
+export type TasteIntensity = "mild" | "medium" | "strong";
+
 export type CommentStatus = "visible" | "moderated";
 export type PantryMatchStatus = "used" | "missing" | "substitution";
 export type RecipeSort = "newest" | "highest-rated" | "most-popular";
@@ -151,6 +154,76 @@ export interface FlavorPairingSuggestion {
   type: "addition" | "substitution";
 }
 
+// ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03) — Additive (post-freeze)
+// ---------------------------------------------------------------------------
+
+export interface TasteMatchInput {
+  tastes: TasteProfile[];
+  intensity?: TasteIntensity;
+  notes?: string;
+  limit?: number;
+}
+
+export interface TasteMatchResult {
+  recipe: RecipeCardData;
+  score: number;
+  matchedTastes: TasteProfile[];
+  reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Food Photo Nutrition Analysis (FR-PHOTO-01..04)
+// ---------------------------------------------------------------------------
+
+export interface NutritionRange {
+  min: number;
+  max: number;
+  estimate: number;
+}
+
+export interface DetectedFoodItem {
+  name: string;
+  portion: string;
+  confidence: "high" | "medium" | "low";
+  calories: number;
+  proteinGrams: number;
+  carbsGrams: number;
+  fatGrams: number;
+  fiberGrams?: number;
+}
+
+export interface FoodPhotoAnalysisInput {
+  image: string;
+  mimeType?: string;
+  filename?: string;
+  mealContext?: string;
+  notes?: string;
+}
+
+export interface FoodPhotoAnalysisResult {
+  dishName: string;
+  summary: string;
+  detectedFoods: DetectedFoodItem[];
+  totalNutrition: {
+    calories: NutritionRange;
+    proteinGrams: NutritionRange;
+    carbsGrams: NutritionRange;
+    fatGrams: NutritionRange;
+    fiberGrams?: NutritionRange;
+  };
+  macroDistribution: {
+    proteinPercentage: number;
+    carbsPercentage: number;
+    fatPercentage: number;
+  };
+  dietaryTags: DietaryLabel[];
+  allergenWarnings: string[];
+  healthInsights: string[];
+  suggestedIngredientsForRecipe: string[];
+  disclaimer: string;
+}
+
 export interface CreateRecipeInput {
   title: string;
   slug: string;
@@ -203,6 +276,33 @@ export interface Recipe {
   updatedAt: string;
 }
 
+/** The subset of `Recipe` that `RecipeCard` actually renders — shared with
+ * lighter-weight card projections (e.g. the favorites feed) that don't
+ * return a full `Recipe`. */
+export type RecipeCardData = Pick<
+  Recipe,
+  | "id"
+  | "title"
+  | "slug"
+  | "summary"
+  | "imageUrl"
+  | "category"
+  | "difficulty"
+  | "dietaryLabels"
+  | "source"
+  | "status"
+  | "averageRating"
+  | "ratingCount"
+  | "favoriteCount"
+  | "totalTimeMinutes"
+>;
+
+export interface FavoriteItem {
+  id: string;
+  recipe: RecipeCardData;
+  createdAt: string;
+}
+
 export interface RecipeSearchQuery extends PaginationQuery {
   q?: string;
   category?: RecipeCategory;
@@ -211,6 +311,22 @@ export interface RecipeSearchQuery extends PaginationQuery {
   difficulty?: Difficulty;
   maxCookingTimeMinutes?: number;
   sort?: RecipeSort;
+  /** Additive: scopes results to the caller's own recipes across all statuses (auth required). */
+  mine?: boolean;
+  /** Additive: only honored alongside `mine: true`. */
+  status?: RecipeStatus;
+}
+
+/** Additive (post-freeze): `GET /users/me/stats`. */
+export interface DashboardStats {
+  totalRecipes: number;
+  draftCount: number;
+  publishedCount: number;
+  hiddenCount: number;
+  totalRatingsReceived: number;
+  totalFavoritesReceived: number;
+  totalCommentsReceived: number;
+  averageRating: number;
 }
 
 export interface CreateRatingInput {
@@ -222,6 +338,8 @@ export type UpdateRatingInput = CreateRatingInput;
 export interface RatingSummary {
   averageRating: number;
   ratingCount: number;
+  /** The caller's own rating when authenticated; omitted entirely for guests. */
+  myRating?: RatingValue | null;
 }
 
 export interface Rating {
@@ -243,10 +361,17 @@ export interface Comment {
   id: string;
   recipe: string;
   user: string;
+  /** Author display name, when known; null if the user reference didn't resolve. */
+  authorName: string | null;
+  authorAvatarUrl: string | null;
   body: string;
   moderationStatus: CommentStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface FavoriteStatus {
+  favorited: boolean;
 }
 
 export interface UserProfile {
@@ -266,4 +391,66 @@ export interface UpdateProfileInput {
   avatarUrl?: string | null;
   bio?: string;
   preferences?: DietaryPreferences;
+}
+
+// ─── Admin (FR-ADMIN-01..04) ─────────────────────────────────────────────────
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+  bio: string;
+  role: UserRole;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUserSearchQuery extends PaginationQuery {
+  q?: string;
+  role?: UserRole;
+}
+
+export interface AdminRecipe {
+  id: string;
+  title: string;
+  slug: string;
+  owner: string;
+  status: RecipeStatus;
+  averageRating: number;
+  ratingCount: number;
+  favoriteCount: number;
+  commentCount: number;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminRecipeSearchQuery extends PaginationQuery {
+  q?: string;
+  status?: RecipeStatus;
+}
+
+/** Admin may only toggle published <-> hidden; draft/publish stays the owner's workflow. */
+export interface AdminRecipeModerationInput {
+  status: "published" | "hidden";
+}
+
+export interface AdminComment {
+  id: string;
+  recipe: string;
+  user: string;
+  body: string;
+  moderationStatus: CommentStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCommentSearchQuery extends PaginationQuery {
+  recipeId?: string;
+  moderationStatus?: CommentStatus;
+}
+
+export interface AdminCommentModerationInput {
+  moderationStatus: CommentStatus;
 }

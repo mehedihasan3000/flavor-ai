@@ -2,9 +2,25 @@ import jwt from "jsonwebtoken";
 import request from "supertest";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { env } from "../src/config/env.js";
+import { UserModel } from "../src/models/User.js";
 import { createApp } from "../src/server.js";
 import * as aiService from "../src/services/aiService.js";
 import * as imageService from "../src/services/imageService.js";
+
+vi.mock("../src/models/User.js", () => ({
+  UserModel: {
+    findOne: vi.fn().mockReturnValue({
+      lean: () => ({
+        exec: async () => ({
+          _id: "507f1f77bcf86cd799439011",
+          email: "chef@example.com",
+          name: "Chef",
+          role: "user",
+        }),
+      }),
+    }),
+  },
+}));
 
 const app = createApp();
 
@@ -19,6 +35,16 @@ function signToken(userId: string = "507f1f77bcf86cd799439011", role: "user" | "
 describe("AI Controller & Upload Routes Integration", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(UserModel.findOne).mockReturnValue({
+      lean: () => ({
+        exec: async () => ({
+          _id: "507f1f77bcf86cd799439011",
+          email: "chef@example.com",
+          name: "Chef",
+          role: "user",
+        }),
+      }),
+    } as never);
   });
 
   afterEach(() => {
@@ -125,6 +151,64 @@ describe("AI Controller & Upload Routes Integration", () => {
       expect(res.status).toBe(200);
       expect(res.body.suggestions).toHaveLength(1);
       expect(res.body.suggestions[0].ingredient).toBe("lemon");
+    });
+  });
+
+  describe("POST /api/v1/ai/recipes/taste-match", () => {
+    it("rejects unauthorized requests without a Bearer token (401)", async () => {
+      const res = await request(app)
+        .post("/api/v1/ai/recipes/taste-match")
+        .send({ tastes: ["spicy"] });
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("UNAUTHORIZED");
+    });
+
+    it("rejects invalid request body (empty tastes array) with 400 VALIDATION_ERROR", async () => {
+      const token = signToken();
+      const res = await request(app)
+        .post("/api/v1/ai/recipes/taste-match")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ tastes: [] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("rejects an unknown taste value with 400 VALIDATION_ERROR", async () => {
+      const token = signToken();
+      const res = await request(app)
+        .post("/api/v1/ai/recipes/taste-match")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ tastes: ["chocolatey"] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("calls aiService.matchRecipesToTaste and returns 200 on success", async () => {
+      const token = signToken();
+      const mockResult = {
+        matches: [
+          {
+            recipe: { id: "507f1f77bcf86cd799439012", title: "Spicy Miso Ramen" },
+            score: 92,
+            matchedTastes: ["spicy", "umami"],
+            reason: "Chili oil and miso broth deliver a strong spicy-umami combination.",
+          },
+        ],
+      };
+
+      vi.spyOn(aiService, "matchRecipesToTaste").mockResolvedValue(mockResult as any);
+
+      const res = await request(app)
+        .post("/api/v1/ai/recipes/taste-match")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ tastes: ["spicy", "umami"] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.matches).toHaveLength(1);
+      expect(res.body.matches[0].score).toBe(92);
     });
   });
 

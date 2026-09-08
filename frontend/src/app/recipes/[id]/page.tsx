@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -9,18 +9,24 @@ import {
   Clock,
   Pencil,
   Sparkles,
-  Star,
   TrashBin,
 } from "@gravity-ui/icons";
 import {
+  addFavorite,
   ApiError,
+  deleteRating,
   deleteRecipe,
+  getFavoriteStatus,
+  getRatingSummary,
   getRecipe,
   publishRecipe,
+  rateRecipe,
+  removeFavorite,
   suggestFlavorPairings,
   unpublishRecipe,
 } from "@/lib/api";
-import type { FlavorPairingSuggestion, Recipe } from "@/lib/types";
+import { useAuth } from "@/lib/auth-context";
+import type { FlavorPairingSuggestion, Recipe, RatingSummary, RatingValue } from "@/lib/types";
 import {
   Alert,
   Badge,
@@ -31,15 +37,21 @@ import {
   ErrorState,
   LoadingState,
 } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
+import { AuthPrompt } from "@/components/auth";
 import { NutritionBadge } from "@/components/recipes/nutrition-badge";
+import { RatingStars } from "@/components/recipes/rating-stars";
+import { CommentSection } from "@/components/recipes/comment-section";
 
 interface RecipeDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
-  const { id } = params;
+  const { id } = use(params);
   const router = useRouter();
+  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const toast = useToast();
 
   // Recipe load state
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -65,23 +77,125 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Fetch recipe on mount
+  // Community: rating (FR-RATE-01..05) & favorite (FR-FAV-01..04) state
+  const [ratingSummary, setRatingSummary] = useState<RatingSummary | null>(null);
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  const [favorited, setFavorited] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [commentCount, setCommentCount] = useState<number | null>(null);
+
+  // Fetch the recipe once auth has hydrated, so an owner's own draft/hidden
+  // recipe resolves correctly (GET /recipes/:id runs behind optionalAuth).
   useEffect(() => {
-    getRecipe(id)
+    if (authLoading) return;
+    const controller = new AbortController();
+
+    Promise.resolve()
+      .then(() => {
+        setIsLoading(true);
+        setError(null);
+      })
+      .then(() => getRecipe(id, { token, signal: controller.signal }))
       .then((data) => {
         setRecipe(data);
         setServingsScale(data.servings || 1);
         setIsLoading(false);
       })
-      .catch((err) => {
-        if (err instanceof ApiError) {
-          setError(err.message);
-        } else {
-          setError("Failed to load recipe details. Please try again.");
-        }
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof ApiError ? err.message : "Failed to load recipe details. Please try again.");
         setIsLoading(false);
       });
-  }, [id]);
+
+    return () => controller.abort();
+  }, [id, token, authLoading]);
+
+  // Rating summary (public + myRating when signed in) and favorite status.
+  const loadCommunityState = useCallback(
+    (signal?: AbortSignal) => {
+      return Promise.resolve()
+        .then(() => {
+          setRatingLoading(true);
+          setRatingError(null);
+        })
+        .then(() =>
+          Promise.all([
+            getRatingSummary(id, { token, signal }),
+            isAuthenticated
+              ? getFavoriteStatus(id, { token, signal }).catch(() => ({ favorited: false }))
+              : Promise.resolve({ favorited: false }),
+          ]),
+        )
+        .then(([summary, favoriteStatus]) => {
+          setRatingSummary(summary);
+          setFavorited(favoriteStatus.favorited);
+          setRatingLoading(false);
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setRatingError(err instanceof ApiError ? err.message : "Failed to load rating.");
+          setRatingLoading(false);
+        });
+    },
+    [id, token, isAuthenticated],
+  );
+
+  useEffect(() => {
+    if (authLoading) return;
+    const controller = new AbortController();
+    void loadCommunityState(controller.signal);
+    return () => controller.abort();
+  }, [loadCommunityState, authLoading]);
+
+  const handleRate = (value: RatingValue) => {
+    setRatingLoading(true);
+    setRatingError(null);
+    rateRecipe(id, { value }, { token })
+      .then(({ summary }) => {
+        setRatingSummary(summary);
+        setRecipe((prev) =>
+          prev ? { ...prev, averageRating: summary.averageRating, ratingCount: summary.ratingCount } : prev,
+        );
+        setRatingLoading(false);
+      })
+      .catch((err: unknown) => {
+        setRatingError(err instanceof ApiError ? err.message : "Failed to submit rating. Please try again.");
+        setRatingLoading(false);
+      });
+  };
+
+  const handleRemoveRating = () => {
+    setRatingLoading(true);
+    setRatingError(null);
+    deleteRating(id, { token })
+      .then(() => getRatingSummary(id, { token }))
+      .then((summary) => {
+        setRatingSummary(summary);
+        setRecipe((prev) =>
+          prev ? { ...prev, averageRating: summary.averageRating, ratingCount: summary.ratingCount } : prev,
+        );
+        setRatingLoading(false);
+      })
+      .catch((err: unknown) => {
+        setRatingError(err instanceof ApiError ? err.message : "Failed to remove rating. Please try again.");
+        setRatingLoading(false);
+      });
+  };
+
+  const handleToggleFavorite = () => {
+    setFavoriteLoading(true);
+    const request = favorited ? removeFavorite(id, { token }) : addFavorite(id, { token });
+    request
+      .then((res) => {
+        setFavorited(!favorited);
+        setRecipe((prev) => (prev ? { ...prev, favoriteCount: res.favoriteCount } : prev));
+        setFavoriteLoading(false);
+      })
+      .catch(() => {
+        setFavoriteLoading(false);
+      });
+  };
 
   const handleToggleIngredient = (idx: number) => {
     setCheckedIngredients((prev) => ({ ...prev, [idx]: !prev[idx] }));
@@ -97,7 +211,10 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     setPairingsLoading(true);
     setPairingError(null);
     try {
-      const result = await suggestFlavorPairings({ ingredient: ingredientName });
+      const result = await suggestFlavorPairings(
+        { ingredient: ingredientName },
+        { token },
+      );
       setPairings(result.pairings);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -119,20 +236,21 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     try {
       const updated =
         recipe.status === "published"
-          ? await unpublishRecipe(recipe.id)
-          : await publishRecipe(recipe.id);
+          ? await unpublishRecipe(recipe.id, { token })
+          : await publishRecipe(recipe.id, { token });
       setRecipe(updated);
-      setActionSuccess(
+      const successMsg =
         updated.status === "published"
           ? "Recipe is now published!"
-          : "Recipe has been unpublished and moved to drafts.",
-      );
+          : "Recipe has been unpublished and moved to drafts.";
+      setActionSuccess(successMsg);
+      toast.success(successMsg, {
+        title: updated.status === "published" ? "Published" : "Unpublished",
+      });
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message);
-      } else {
-        setActionError("Action failed. Please try again.");
-      }
+      const msg = err instanceof ApiError ? err.message : "Action failed. Please try again.";
+      setActionError(msg);
+      toast.error(msg, { title: "Update failed" });
     } finally {
       setActionLoading(false);
     }
@@ -144,14 +262,13 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     setActionError(null);
 
     try {
-      await deleteRecipe(recipe.id);
+      await deleteRecipe(recipe.id, { token });
+      toast.success(`"${recipe.title}" was deleted.`, { title: "Recipe deleted" });
       router.push("/");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message);
-      } else {
-        setActionError("Failed to delete recipe.");
-      }
+      const msg = err instanceof ApiError ? err.message : "Failed to delete recipe.";
+      setActionError(msg);
+      toast.error(msg, { title: "Delete failed" });
       setShowDeleteModal(false);
       setActionLoading(false);
     }
@@ -187,6 +304,10 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const isPublished = recipe.status === "published";
   const defaultServings = recipe.servings || 1;
   const scalingRatio = servingsScale / defaultServings;
+  const isOwner = Boolean(user && recipe.owner === user.id);
+  const isAdmin = user?.role === "admin";
+  const isOwnerOrAdmin = isOwner || isAdmin;
+  const myRating = ratingSummary?.myRating ?? null;
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -205,8 +326,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
         </span>
       </nav>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
+      {/* Delete Confirmation Modal — only reachable when owner/admin toolbar is visible */}
+      {showDeleteModal && isOwnerOrAdmin && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
@@ -298,25 +419,71 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
 
             {/* Ratings & Favorites summary */}
             <div className="flex items-center gap-4 text-xs font-semibold text-neutral-700">
-              <div className="flex items-center gap-1 text-amber-600">
-                <Star className="h-4 w-4 fill-amber-400 text-amber-500" />
+              <RatingStars
+                value={ratingSummary?.averageRating ?? recipe.averageRating}
+                count={ratingSummary?.ratingCount ?? recipe.ratingCount}
+                size="sm"
+              />
+              <Button
+                type="button"
+                variant={favorited ? "primary" : "outline"}
+                size="sm"
+                loading={favoriteLoading}
+                disabled={!isAuthenticated}
+                onClick={handleToggleFavorite}
+                title={isAuthenticated ? undefined : "Sign in to favorite this recipe"}
+              >
+                <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>
-                  {recipe.averageRating > 0
-                    ? recipe.averageRating.toFixed(1)
-                    : "New"}
+                  {favorited ? "Favorited" : "Favorite"} ({recipe.favoriteCount})
                 </span>
-                {recipe.ratingCount > 0 && (
-                  <span className="text-neutral-400 font-normal">
-                    ({recipe.ratingCount})
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1 text-rose-600">
-                <Bookmark className="h-4 w-4 text-rose-500" />
-                <span>{recipe.favoriteCount}</span>
-              </div>
+              </Button>
+              <a
+                href="#comments-heading"
+                className="text-neutral-600 underline-offset-2 hover:text-orange-700 hover:underline"
+              >
+                {commentCount ?? recipe.commentCount} comments
+              </a>
             </div>
           </div>
+
+          {/* Rate this recipe */}
+          {!isOwner && (
+            <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              {isAuthenticated ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-neutral-900">
+                      {myRating ? "Your rating" : "Rate this recipe"}
+                    </p>
+                    <RatingStars
+                      value={myRating ?? 0}
+                      interactive
+                      disabled={ratingLoading}
+                      onRate={handleRate}
+                      className="mt-1"
+                    />
+                  </div>
+                  {myRating ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={ratingLoading}
+                      onClick={handleRemoveRating}
+                    >
+                      Remove my rating
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <AuthPrompt variant="banner" actionName="rate this recipe" />
+              )}
+              {ratingError && (
+                <p className="mt-2 text-xs font-medium text-red-600">{ratingError}</p>
+              )}
+            </div>
+          )}
 
           {/* Title & Summary */}
           <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl">
@@ -372,45 +539,47 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
             </div>
           )}
 
-          {/* Owner Action Toolbar */}
+          {/* Owner/Admin Action Toolbar — visible only to recipe owner or admin (FR-RECIPE-06) */}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-6">
             <div className="text-xs text-neutral-500">
               Created {new Date(recipe.createdAt).toLocaleDateString()}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href={`/recipes/${recipe.id}/edit`}>
-                <Button type="button" variant="outline" size="sm">
-                  <Pencil className="h-3.5 w-3.5" />
-                  <span>Edit Recipe</span>
+            {isOwnerOrAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/recipes/${recipe.id}/edit`}>
+                  <Button type="button" variant="outline" size="sm">
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>Edit Recipe</span>
+                  </Button>
+                </Link>
+
+                <Button
+                  type="button"
+                  variant={isPublished ? "secondary" : "primary"}
+                  size="sm"
+                  onClick={handleTogglePublish}
+                  disabled={actionLoading}
+                >
+                  {actionLoading
+                    ? "Updating..."
+                    : isPublished
+                    ? "Unpublish"
+                    : "Publish Recipe"}
                 </Button>
-              </Link>
 
-              <Button
-                type="button"
-                variant={isPublished ? "secondary" : "primary"}
-                size="sm"
-                onClick={handleTogglePublish}
-                disabled={actionLoading}
-              >
-                {actionLoading
-                  ? "Updating..."
-                  : isPublished
-                  ? "Unpublish"
-                  : "Publish Recipe"}
-              </Button>
-
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={() => setShowDeleteModal(true)}
-                disabled={actionLoading}
-              >
-                <TrashBin className="h-3.5 w-3.5" />
-                <span>Delete</span>
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setShowDeleteModal(true)}
+                  disabled={actionLoading}
+                >
+                  <TrashBin className="h-3.5 w-3.5" />
+                  <span>Delete</span>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </Card>
@@ -630,6 +799,11 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
           </Card>
         </div>
       </div>
+
+      {/* Comments (FR-COMMENT-01..05) */}
+      <Card className="mt-8 p-6">
+        <CommentSection recipeId={recipe.id} onCountChange={setCommentCount} />
+      </Card>
     </main>
   );
 }

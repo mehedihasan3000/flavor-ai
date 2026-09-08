@@ -37,6 +37,9 @@ export const RECIPE_CATEGORY = [
   "beverage",
 ] as const;
 
+export const TASTE_PROFILE = ["spicy", "sweet", "salty", "sour", "bitter", "umami"] as const;
+export const TASTE_INTENSITY = ["mild", "medium", "strong"] as const;
+
 export const COMMENT_STATUS = ["visible", "moderated"] as const;
 export const AI_GENERATION_STATUS = ["success", "failed", "timeout"] as const;
 export const AI_ERROR_CATEGORY = [
@@ -207,6 +210,98 @@ export const FlavorPairingSuggestionSchema = z.object({
 export type FlavorPairingSuggestion = z.infer<typeof FlavorPairingSuggestionSchema>;
 
 // ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03) — Additive (post-freeze)
+// ---------------------------------------------------------------------------
+
+export const TasteMatchInput = z.object({
+  tastes: z
+    .array(z.enum(TASTE_PROFILE))
+    .min(1, "Select at least one taste preference")
+    .max(TASTE_PROFILE.length),
+  intensity: z.enum(TASTE_INTENSITY).optional(),
+  notes: z.string().max(300).optional(),
+  limit: z.number().int().min(1).max(20).default(10),
+});
+
+export type TasteMatchInput = z.infer<typeof TasteMatchInput>;
+
+export const TasteMatchSuggestionSchema = z.object({
+  recipeId: ObjectIdString,
+  score: z.number().min(0).max(100),
+  matchedTastes: z.array(z.enum(TASTE_PROFILE)).default([]),
+  reason: z.string().min(3).max(300),
+});
+
+export type TasteMatchSuggestion = z.infer<typeof TasteMatchSuggestionSchema>;
+
+// ---------------------------------------------------------------------------
+// Food Photo Nutrition Analysis (FR-PHOTO-01..04)
+// ---------------------------------------------------------------------------
+
+export const NutritionRange = z.object({
+  min: z.number().nonnegative(),
+  max: z.number().nonnegative(),
+  estimate: z.number().nonnegative(),
+});
+
+export type NutritionRange = z.infer<typeof NutritionRange>;
+
+export const DetectedFoodItem = z.object({
+  name: z.string().min(1).max(100),
+  portion: z.string().min(1).max(100),
+  confidence: z.enum(["high", "medium", "low"]).default("high"),
+  calories: z.number().nonnegative(),
+  proteinGrams: z.number().nonnegative(),
+  carbsGrams: z.number().nonnegative(),
+  fatGrams: z.number().nonnegative(),
+  fiberGrams: z.number().nonnegative().optional(),
+});
+
+export type DetectedFoodItem = z.infer<typeof DetectedFoodItem>;
+
+export const FoodPhotoAnalysisInput = z.object({
+  image: z.string().min(1, "Image data or URL is required"),
+  mimeType: z.string().optional(),
+  filename: z.string().optional(),
+  mealContext: z.string().max(200).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export type FoodPhotoAnalysisInput = z.infer<typeof FoodPhotoAnalysisInput>;
+
+export const FoodPhotoAnalysisResult = z.object({
+  dishName: z.string().min(2).max(120),
+  summary: z.string().max(600).default(""),
+  detectedFoods: z.array(DetectedFoodItem).min(1, "At least one food item must be detected"),
+  totalNutrition: z.object({
+    calories: NutritionRange,
+    proteinGrams: NutritionRange,
+    carbsGrams: NutritionRange,
+    fatGrams: NutritionRange,
+    fiberGrams: NutritionRange.optional(),
+  }),
+  macroDistribution: z
+    .object({
+      proteinPercentage: z.number().min(0).max(100),
+      carbsPercentage: z.number().min(0).max(100),
+      fatPercentage: z.number().min(0).max(100),
+    })
+    .optional()
+    .default({ proteinPercentage: 0, carbsPercentage: 0, fatPercentage: 0 }),
+  dietaryTags: z.array(z.enum(DIETARY_LABEL)).default([]),
+  allergenWarnings: z.array(z.string()).default([]),
+  healthInsights: z.array(z.string().max(250)).default([]),
+  suggestedIngredientsForRecipe: z.array(z.string().max(100)).default([]),
+  disclaimer: z
+    .string()
+    .default(
+      "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice.",
+    ),
+});
+
+export type FoodPhotoAnalysisResult = z.infer<typeof FoodPhotoAnalysisResult>;
+
+// ---------------------------------------------------------------------------
 // Pantry matching (FR-PANTRY-02/03)
 // ---------------------------------------------------------------------------
 
@@ -277,6 +372,10 @@ export const RecipeSearchQuery = PaginationQuery.extend({
   difficulty: z.enum(DIFFICULTY).optional(),
   maxCookingTimeMinutes: z.coerce.number().int().positive().optional(),
   sort: z.enum(["newest", "highest-rated", "most-popular"]).default("newest"),
+  /** Additive: scopes results to the caller's own recipes across all statuses (auth required). */
+  mine: z.coerce.boolean().optional(),
+  /** Additive: only honored alongside `mine=true` (see searchRecipes). */
+  status: z.enum(RECIPE_STATUS).optional(),
 });
 
 export type RecipeSearchQuery = z.infer<typeof RecipeSearchQuery>;
@@ -298,6 +397,8 @@ export const UpdateRatingInput = z.object({
 export const RatingSummary = z.object({
   averageRating: z.number().min(0).max(5),
   ratingCount: z.number().int().nonnegative(),
+  /** The authenticated caller's own rating, when present; omitted for guests. */
+  myRating: RatingValue.nullable().optional(),
 });
 
 export type CreateRatingInput = z.infer<typeof CreateRatingInput>;
@@ -318,6 +419,25 @@ export const UpdateCommentInput = z.object({
 
 export type CreateCommentInput = z.infer<typeof CreateCommentInput>;
 export type UpdateCommentInput = z.infer<typeof UpdateCommentInput>;
+
+// ---------------------------------------------------------------------------
+// Email/password credentials (FR-AUTH-01/02/07)
+// ---------------------------------------------------------------------------
+
+export const CredentialSignUpInput = z.object({
+  name: z.string().trim().min(1, "Display name is required").max(100),
+  email: z.string().trim().toLowerCase().email("Please provide a valid email address").max(254),
+  password: z.string().min(8, "Password must be at least 8 characters long.").max(128),
+});
+
+export type CredentialSignUpInput = z.infer<typeof CredentialSignUpInput>;
+
+export const CredentialSignInInput = z.object({
+  email: z.string().trim().toLowerCase().email("Please provide a valid email address").max(254),
+  password: z.string().min(1, "Password is required").max(128),
+});
+
+export type CredentialSignInInput = z.infer<typeof CredentialSignInInput>;
 
 // ---------------------------------------------------------------------------
 // User profile / preferences (FR-AUTH-06)

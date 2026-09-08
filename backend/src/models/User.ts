@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const userSchema = new Schema(
   {
@@ -6,6 +6,10 @@ const userSchema = new Schema(
     email: { type: String, required: true, trim: true, lowercase: true },
     avatarUrl: { type: String, default: null },
     bio: { type: String, maxlength: 500, default: "" },
+    // Scrypt hash `<salt_hex>:<hash_hex>` for email/password users (FR-AUTH-07).
+    // Null for Google-only / legacy mock accounts created before password auth.
+    // NEVER returned by any API response.
+    passwordHash: { type: String, default: null },
     // Default undefined so documents without a provider are NOT stored with the
     // field — required for the sparse unique index (multiple nulls collide).
     providerId: { type: String, default: undefined },
@@ -32,4 +36,4 @@ userSchema.index({ providerId: 1 }, { unique: true, sparse: true });
 
 export type User = InferSchemaType<typeof userSchema>;
 
-export const UserModel = models.User || model("User", userSchema);
+export const UserModel = mongoose.models.User || model("User", userSchema);

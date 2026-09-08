@@ -1,21 +1,35 @@
 import { env } from "../config/env.js";
 import { AIGenerationLogModel } from "../models/AIGenerationLog.js";
+import { RecipeModel, type Recipe } from "../models/Recipe.js";
+import { toRecipeResponse } from "../controllers/recipeController.js";
 import {
   AIRecipeOutputSchema,
   FlavorPairingSuggestionSchema,
+  FoodPhotoAnalysisResult,
+  TASTE_PROFILE,
+  TasteMatchSuggestionSchema,
   type AIRecipeOutput,
   type AIRecipePromptInput,
   type FlavorPairingInput,
   type FlavorPairingSuggestion,
+  type FoodPhotoAnalysisInput,
   type IngredientInput,
   type PantryMatchResult,
   type RecipeIngredient,
+  type TasteMatchInput,
+  type TasteMatchSuggestion,
 } from "../types/index.js";
+import { validateImageInput } from "./imageService.js";
 import { ApiError } from "../utils/ApiError.js";
+import type { HydratedDocument } from "mongoose";
 import { z } from "zod";
 
 const FlavorPairingOutputSchema = z.object({
   suggestions: z.array(FlavorPairingSuggestionSchema),
+});
+
+const TasteMatchOutputSchema = z.object({
+  matches: z.array(TasteMatchSuggestionSchema),
 });
 
 /**
@@ -201,8 +215,18 @@ CRITICAL INSTRUCTIONS:
  */
 function cleanJsonResponse(raw: string): string {
   let cleaned = raw.trim();
+  // Strip extended-thinking <think>...</think> blocks emitted by reasoning models
+  // (e.g. qwen/qwen3.6-27b). The block can be enormous, so strip greedily.
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  // Strip markdown code fences
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  }
+  // Extract the first {...} JSON object if there is any leading/trailing prose
+  const jsonStart = cleaned.indexOf("{");
+  const jsonEnd = cleaned.lastIndexOf("}");
+  if (jsonStart !== -1 && jsonEnd > jsonStart) {
+    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
   }
   return cleaned.trim();
 }
@@ -530,3 +554,646 @@ export async function generateFlavorPairings(
 
   return { suggestions: validationResult.data.suggestions };
 }
+
+// ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03)
+// ---------------------------------------------------------------------------
+
+/** Search keywords per taste, used to build the candidate recipe pool via the
+ * existing text index (title/summary/ingredients.name) and `tags` field —
+ * no schema change needed on Recipe. */
+const TASTE_KEYWORDS: Record<(typeof TASTE_PROFILE)[number], string[]> = {
+  spicy: ["spicy", "chili", "chilli", "pepper", "cayenne", "jalapeno", "hot sauce", "sriracha", "curry", "harissa"],
+  sweet: ["sweet", "sugar", "honey", "caramel", "chocolate", "dessert", "maple", "fruit"],
+  salty: ["salty", "salt", "brine", "soy sauce", "cheese", "bacon", "olives", "pickled"],
+  sour: ["sour", "tangy", "citrus", "lemon", "lime", "vinegar", "yogurt", "tamarind"],
+  bitter: ["bitter", "coffee", "cocoa", "kale", "arugula", "grapefruit", "beer"],
+  umami: ["umami", "savory", "mushroom", "soy sauce", "parmesan", "miso", "broth", "tomato"],
+};
+
+const TASTE_CANDIDATE_POOL_SIZE = 40;
+const TASTE_CANDIDATE_MIN_BEFORE_FALLBACK = 10;
+
+interface TasteCandidateSummary {
+  id: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  cuisine: string | null;
+  category: string | null;
+  keyIngredients: string[];
+}
+
+function toCandidateSummary(recipe: HydratedDocument<Recipe>): TasteCandidateSummary {
+  return {
+    id: recipe._id.toString(),
+    title: recipe.title,
+    summary: (recipe.summary ?? "").slice(0, 150),
+    tags: recipe.tags ?? [],
+    cuisine: recipe.cuisine ?? null,
+    category: recipe.category ?? null,
+    keyIngredients: (recipe.ingredients ?? []).slice(0, 6).map((ing) => ing.name),
+  };
+}
+
+/**
+ * Selects a bounded pool of published recipes likely relevant to the
+ * requested tastes, reusing the existing text index and `tags` field so the
+ * AI prompt stays small and cost-predictable regardless of catalog size.
+ * Pads with recently published recipes if the keyword match is too sparse
+ * (FR-TASTE-02).
+ */
+async function selectTasteCandidates(
+  tastes: TasteMatchInput["tastes"],
+): Promise<Map<string, HydratedDocument<Recipe>>> {
+  const keywordSet = new Set<string>();
+  for (const taste of tastes) {
+    keywordSet.add(taste);
+    for (const keyword of TASTE_KEYWORDS[taste] ?? []) keywordSet.add(keyword);
+  }
+  const keywords = Array.from(keywordSet);
+  const keywordQuery = keywords.join(" ");
+
+  const [tagMatches, textMatches] = await Promise.all([
+    RecipeModel.find({ status: "published", tags: { $in: keywords } }).limit(
+      TASTE_CANDIDATE_POOL_SIZE,
+    ),
+    RecipeModel.find(
+      { status: "published", $text: { $search: keywordQuery } },
+      { score: { $meta: "textScore" } },
+    )
+      .sort({ score: { $meta: "textScore" } })
+      .limit(TASTE_CANDIDATE_POOL_SIZE),
+  ]);
+
+  const candidates = new Map<string, HydratedDocument<Recipe>>();
+  for (const doc of [...tagMatches, ...textMatches]) {
+    candidates.set(doc._id.toString(), doc);
+  }
+
+  if (candidates.size < TASTE_CANDIDATE_MIN_BEFORE_FALLBACK) {
+    const fallback = await RecipeModel.find({ status: "published" })
+      .sort({ publishedAt: -1 })
+      .limit(TASTE_CANDIDATE_POOL_SIZE);
+    for (const doc of fallback) {
+      if (candidates.size >= TASTE_CANDIDATE_POOL_SIZE) break;
+      candidates.set(doc._id.toString(), doc);
+    }
+  }
+
+  return candidates;
+}
+
+/**
+ * Constructs prompt asking the AI to score/rank candidate recipes against
+ * the user's requested taste preferences.
+ */
+export function buildTasteMatchPrompt(
+  input: TasteMatchInput,
+  candidates: TasteCandidateSummary[],
+): { systemPrompt: string; userPrompt: string } {
+  const systemPrompt = `You are FlavorAI, an expert taste-profiling culinary assistant.
+Given a user's taste preferences and a list of candidate recipes, score how well each candidate matches those tastes.
+
+CRITICAL INSTRUCTIONS:
+1. Return ONLY a single valid JSON object. Do NOT wrap the JSON in markdown fences (e.g. no \`\`\`json).
+2. The output MUST conform strictly to this JSON structure:
+{
+  "matches": [
+    {
+      "recipeId": string (MUST be exactly one of the candidate ids provided below — never invent an id),
+      "score": number (0-100, higher = better taste match),
+      "matchedTastes": string[] (subset of ${JSON.stringify(TASTE_PROFILE)} this recipe satisfies),
+      "reason": string (1-2 sentences explaining the match in plain language)
+    }
+  ]
+}
+3. Only include recipes genuinely worth recommending — omit weak or irrelevant matches rather than padding the list.
+4. Order "matches" from highest to lowest score.
+5. Never fabricate a recipeId that is not in the candidate list below.`;
+
+  const tasteDetails: string[] = [`Requested tastes: ${input.tastes.join(", ")}`];
+  if (input.intensity) tasteDetails.push(`Overall intensity preference: ${input.intensity}`);
+  if (input.notes?.trim()) tasteDetails.push(`Additional notes from user: ${input.notes.trim()}`);
+
+  const candidateList = candidates
+    .map(
+      (c) =>
+        `- id: ${c.id} | title: "${c.title}" | tags: [${c.tags.join(", ")}] | cuisine: ${c.cuisine ?? "n/a"} | category: ${c.category ?? "n/a"} | key ingredients: ${c.keyIngredients.join(", ")} | summary: ${c.summary}`,
+    )
+    .join("\n");
+
+  const userPrompt = `User taste preferences:\n- ${tasteDetails.join("\n- ")}\n\nCandidate recipes:\n${candidateList}\n\nScore and rank the candidates above by how well they match the user's taste preferences. Return at most ${input.limit} matches.`;
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * Recommends existing published recipes that best match a user's taste
+ * preferences via AI reranking of a pre-filtered candidate pool.
+ * (FR-TASTE-01..03)
+ */
+export async function matchRecipesToTaste(
+  input: TasteMatchInput,
+  userId?: string,
+): Promise<{ matches: Array<{ recipe: ReturnType<typeof toRecipeResponse>; score: number; matchedTastes: TasteMatchSuggestion["matchedTastes"]; reason: string }> }> {
+  const apiKey = env.GROQ_API_KEY;
+  if (!apiKey || apiKey === "change-me") {
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI service key is not configured.");
+  }
+
+  const candidateMap = await selectTasteCandidates(input.tastes);
+  if (candidateMap.size === 0) {
+    return { matches: [] };
+  }
+
+  const candidateSummaries = Array.from(candidateMap.values()).map(toCandidateSummary);
+  const { systemPrompt, userPrompt } = buildTasteMatchPrompt(input, candidateSummaries);
+  const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), env.AI_REQUEST_TIMEOUT_MS);
+
+  let rawResponseText = "";
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: env.GROQ_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.4,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    clearTimeout(timeoutId);
+    const latencyMs = Date.now() - startTime;
+
+    if (!res.ok) {
+      await logAIGeneration({
+        userId,
+        input,
+        model: env.GROQ_MODEL,
+        status: "failed",
+        latencyMs,
+        errorCategory: res.status === 429 ? "rate_limit" : "provider_error",
+      });
+      throw new ApiError(
+        502,
+        "AI_PROVIDER_ERROR",
+        "AI taste matching service unavailable. Please try again.",
+      );
+    }
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    rawResponseText = data.choices?.[0]?.message?.content ?? "";
+  } catch (err: unknown) {
+    clearTimeout(timeoutId);
+    const latencyMs = Date.now() - startTime;
+    if (err instanceof ApiError) throw err;
+
+    const isTimeout =
+      (err as Error)?.name === "AbortError" || (err as Error)?.message?.includes("aborted");
+
+    await logAIGeneration({
+      userId,
+      input,
+      model: env.GROQ_MODEL,
+      status: isTimeout ? "timeout" : "failed",
+      latencyMs,
+      errorCategory: isTimeout ? "timeout" : "provider_error",
+    });
+
+    if (isTimeout) {
+      throw new ApiError(504, "AI_PROVIDER_ERROR", "Taste matching request timed out. Please try again.");
+    }
+
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI service encountered an error. Please try again.");
+  }
+
+  const latencyMs = Date.now() - startTime;
+  const cleanedJson = cleanJsonResponse(rawResponseText);
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(cleanedJson);
+  } catch {
+    await logAIGeneration({
+      userId,
+      input,
+      model: env.GROQ_MODEL,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI returned invalid taste match data format.");
+  }
+
+  const validationResult = TasteMatchOutputSchema.safeParse(parsedJson);
+  if (!validationResult.success) {
+    console.error(
+      "[aiService] TasteMatchOutputSchema validation failed:",
+      validationResult.error.flatten(),
+    );
+    await logAIGeneration({
+      userId,
+      input,
+      model: env.GROQ_MODEL,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI taste matching failed validation requirements.");
+  }
+
+  // Safety: discard any recipeId the model may have hallucinated outside the
+  // candidate pool we actually offered it, then hydrate the real recipe docs.
+  const matches = validationResult.data.matches
+    .filter((match) => candidateMap.has(match.recipeId))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, input.limit)
+    .map((match) => ({
+      recipe: toRecipeResponse(candidateMap.get(match.recipeId)!),
+      score: match.score,
+      matchedTastes: match.matchedTastes,
+      reason: match.reason,
+    }));
+
+  await logAIGeneration({
+    userId,
+    input,
+    model: env.GROQ_MODEL,
+    status: "success",
+    latencyMs,
+  });
+
+  return { matches };
+}
+
+/**
+ * Constructs prompt for food photo visual analysis and nutrition estimation.
+ * (FR-PHOTO-01..04, FR-NUTR-01..03)
+ */
+export function buildFoodPhotoAnalysisPrompt(
+  mealContext?: string,
+  notes?: string,
+): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const systemPrompt = `You are FlavorAI Food Vision & Nutrition Analyst, a certified nutritional biochemist and master culinary analysis engine.
+Your task is to analyze the provided food photo or meal image with high accuracy, detecting foods/ingredients, estimating portion sizes, and computing nutritional values.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with ONLY a valid, raw JSON object. Do not include markdown code block formatting (e.g. no \`\`\`json).
+2. The JSON object must strictly match this exact structure:
+{
+  "dishName": "Grilled Salmon with Asparagus and Quinoa",
+  "summary": "Grilled salmon fillet served with tender asparagus spears and seasoned quinoa.",
+  "detectedFoods": [
+    {
+      "name": "Grilled Salmon Fillet",
+      "portion": "150g fillet",
+      "confidence": "high",
+      "calories": 280,
+      "proteinGrams": 34,
+      "carbsGrams": 0,
+      "fatGrams": 15,
+      "fiberGrams": 0
+    }
+  ],
+  "totalNutrition": {
+    "calories": { "min": 320, "max": 400, "estimate": 360 },
+    "proteinGrams": { "min": 32, "max": 38, "estimate": 35 },
+    "carbsGrams": { "min": 4, "max": 8, "estimate": 6 },
+    "fatGrams": { "min": 18, "max": 24, "estimate": 21 },
+    "fiberGrams": { "min": 0, "max": 2, "estimate": 1 }
+  },
+  "macroDistribution": {
+    "proteinPercentage": 39,
+    "carbsPercentage": 7,
+    "fatPercentage": 54
+  },
+  "dietaryTags": ["high-protein", "gluten-free"],
+  "allergenWarnings": ["Fish"],
+  "healthInsights": ["High in bioavailable lean protein and heart-healthy Omega-3 fatty acids."],
+  "suggestedIngredientsForRecipe": ["salmon fillet", "asparagus", "olive oil", "lemon"],
+  "disclaimer": "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice."
+}
+3. macroDistribution percentages MUST sum to approximately 100%.
+4. Allowed dietaryTags: "vegetarian", "vegan", "halal", "gluten-free", "dairy-free", "high-protein", "low-carb", "keto".`;
+
+  const details: string[] = [
+    "Analyze this food photo. Estimate nutrition, detect ingredients, and calculate macros.",
+  ];
+  if (mealContext?.trim()) {
+    details.push(`User Meal Context: ${mealContext.trim()}`);
+  }
+  if (notes?.trim()) {
+    details.push(`User Notes: ${notes.trim()}`);
+  }
+  details.push("Output the analysis strictly as a valid JSON object matching the required schema.");
+
+  const userPrompt = details.join("\n");
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * Analyzes food photo to estimate nutrition and breakdown ingredients.
+ * (FR-PHOTO-01..04)
+ */
+export async function analyzeFoodPhoto(
+  input: FoodPhotoAnalysisInput,
+  userId?: string,
+): Promise<FoodPhotoAnalysisResult> {
+  const apiKey = env.GROQ_API_KEY;
+  if (!apiKey || apiKey === "change-me") {
+    throw new ApiError(502, "AI_PROVIDER_ERROR", "AI service key is not configured.");
+  }
+
+  // Format image URL or validated data URL
+  let formattedImageUrl = input.image;
+  if (!input.image.startsWith("http://") && !input.image.startsWith("https://")) {
+    if (!input.image.startsWith("data:")) {
+      const mime = input.mimeType || "image/jpeg";
+      // Validate file size and mime
+      validateImageInput({
+        base64Data: input.image,
+        mimeType: mime,
+        filename: input.filename,
+      });
+      formattedImageUrl = `data:${mime};base64,${input.image}`;
+    } else {
+      const mime = input.image.split(";")[0]?.replace("data:", "") || "image/jpeg";
+      validateImageInput({
+        base64Data: input.image,
+        mimeType: mime,
+        filename: input.filename,
+      });
+    }
+  }
+
+  const { systemPrompt, userPrompt } = buildFoodPhotoAnalysisPrompt(
+    input.mealContext,
+    input.notes,
+  );
+
+  const primaryModel = env.GROQ_MODEL_FOR_IMAGE || "qwen/qwen3.6-27b";
+  // Fallback vision models — only active Groq vision-capable models.
+  // llama-3.2-90b-vision-preview: decommissioned Sep 2025.
+  // meta-llama/llama-4-scout-17b-16e-instruct: not available on this API key tier.
+  const candidateModels = [
+    primaryModel,
+    "qwen/qwen3.8-27b",
+    "llama-3.2-11b-vision-preview",
+    "llama-3.2-90b-vision-preview",
+  ].filter((m, i, arr) => arr.indexOf(m) === i);
+
+  const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), env.AI_REQUEST_TIMEOUT_MS);
+
+  let rawResponseText = "";
+  let successfulModel = primaryModel;
+  let lastErrorMessage = "";
+
+  try {
+    for (const model of candidateModels) {
+      // First attempt with response_format json_object; if 400 json_validate_failed, retry without constraint
+      for (const useJsonFormat of [true, false]) {
+        try {
+          const bodyPayload: Record<string, unknown> = {
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: userPrompt },
+                  { type: "image_url", image_url: { url: formattedImageUrl } },
+                ],
+              },
+            ],
+            temperature: 0,      // deterministic output reduces token waste on reasoning
+            max_tokens: 2048,     // cap prevents reasoning models (qwen) consuming entire budget on <think>
+          };
+
+          if (useJsonFormat) {
+            bodyPayload.response_format = { type: "json_object" };
+          }
+
+          const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            signal: controller.signal,
+            body: JSON.stringify(bodyPayload),
+          });
+
+          if (res.ok) {
+            const data = (await res.json()) as {
+              choices?: Array<{ message?: { content?: string } }>;
+            };
+            rawResponseText = data.choices?.[0]?.message?.content ?? "";
+            console.log(`\n[aiService] === RAW AI RESPONSE (model: ${model}) ===\n${rawResponseText}\n[aiService] ========================================\n`);
+            if (rawResponseText.trim()) {
+              successfulModel = model;
+              break;
+            }
+          } else {
+            const errBody = await res.text().catch(() => "");
+            lastErrorMessage = `[${model}] HTTP ${res.status}: ${errBody}`;
+            // If json_validate_failed, try next loop without response_format constraint
+            if (res.status === 400 && errBody.includes("json_validate_failed") && useJsonFormat) {
+              continue;
+            }
+          }
+        } catch (fetchErr) {
+          if ((fetchErr as Error)?.name === "AbortError") throw fetchErr;
+          lastErrorMessage = (fetchErr as Error)?.message || "Network error";
+        }
+      }
+
+      if (rawResponseText.trim()) {
+        break;
+      }
+    }
+
+    clearTimeout(timeoutId);
+
+    if (!rawResponseText.trim()) {
+      console.error(`[aiService] Food photo analysis failed across candidate models: ${lastErrorMessage}`);
+      const latencyMs = Date.now() - startTime;
+      await logAIGeneration({
+        userId,
+        input: { mealContext: input.mealContext, filename: input.filename },
+        model: primaryModel,
+        status: "failed",
+        latencyMs,
+        errorCategory: "provider_error",
+      });
+      throw new ApiError(
+        502,
+        "AI_PROVIDER_ERROR",
+        "Food photo nutrition analysis service unavailable. Please try again.",
+      );
+    }
+  } catch (err: unknown) {
+    clearTimeout(timeoutId);
+    const latencyMs = Date.now() - startTime;
+
+    if (err instanceof ApiError) throw err;
+
+    const isTimeout =
+      (err as Error)?.name === "AbortError" ||
+      (err as Error)?.message?.includes("aborted");
+
+    await logAIGeneration({
+      userId,
+      input: { mealContext: input.mealContext, filename: input.filename },
+      model: primaryModel,
+      status: isTimeout ? "timeout" : "failed",
+      latencyMs,
+      errorCategory: isTimeout ? "timeout" : "provider_error",
+    });
+
+    if (isTimeout) {
+      throw new ApiError(
+        504,
+        "AI_PROVIDER_ERROR",
+        "Food photo analysis request timed out. Please try again.",
+      );
+    }
+
+    throw new ApiError(
+      502,
+      "AI_PROVIDER_ERROR",
+      "AI service encountered an error while analyzing the image. Please try again.",
+    );
+  }
+
+  const latencyMs = Date.now() - startTime;
+  const cleanedJson = cleanJsonResponse(rawResponseText);
+  let parsedJson: unknown;
+
+  try {
+    parsedJson = JSON.parse(cleanedJson);
+  } catch {
+    await logAIGeneration({
+      userId,
+      input: { mealContext: input.mealContext, filename: input.filename },
+      model: successfulModel,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(
+      502,
+      "AI_PROVIDER_ERROR",
+      "AI returned invalid nutrition analysis data format.",
+    );
+  }
+
+  // Pre-normalize common model quirks before Zod validation
+  if (typeof parsedJson === "object" && parsedJson !== null) {
+    const rawObj = parsedJson as Record<string, unknown>;
+
+    // 1. Default disclaimer if missing or empty
+    if (!rawObj.disclaimer || typeof rawObj.disclaimer !== "string" || !rawObj.disclaimer.trim()) {
+      rawObj.disclaimer =
+        "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice.";
+    }
+
+    // 2. Default summary if missing
+    if (typeof rawObj.summary !== "string" || !rawObj.summary.trim()) {
+      rawObj.summary = "";
+    }
+
+    // 3. Compute macroDistribution from totalNutrition when missing or incomplete
+    const hasMacro =
+      rawObj.macroDistribution !== null &&
+      typeof rawObj.macroDistribution === "object" &&
+      typeof (rawObj.macroDistribution as Record<string, unknown>).proteinPercentage === "number";
+
+    if (!hasMacro && typeof rawObj.totalNutrition === "object" && rawObj.totalNutrition !== null) {
+      const tn = rawObj.totalNutrition as Record<string, Record<string, number>>;
+      const protein = (tn.proteinGrams?.estimate ?? 0) * 4;
+      const carbs = (tn.carbsGrams?.estimate ?? 0) * 4;
+      const fat = (tn.fatGrams?.estimate ?? 0) * 9;
+      const total = protein + carbs + fat || 1;
+      rawObj.macroDistribution = {
+        proteinPercentage: Math.round((protein / total) * 100),
+        carbsPercentage: Math.round((carbs / total) * 100),
+        fatPercentage: Math.round((fat / total) * 100),
+      };
+    }
+
+    // 4. Normalize dietaryTags — strip any values outside the allowed enum
+    const validLabels = new Set([
+      "vegetarian",
+      "vegan",
+      "halal",
+      "gluten-free",
+      "dairy-free",
+      "high-protein",
+      "low-carb",
+      "keto",
+    ]);
+    if (Array.isArray(rawObj.dietaryTags)) {
+      rawObj.dietaryTags = rawObj.dietaryTags
+        .map((t) => String(t).toLowerCase().trim())
+        .filter((t) => validLabels.has(t));
+    } else {
+      rawObj.dietaryTags = [];
+    }
+
+    // 5. Default empty arrays for other optional array fields
+    if (!Array.isArray(rawObj.allergenWarnings)) rawObj.allergenWarnings = [];
+    if (!Array.isArray(rawObj.healthInsights)) rawObj.healthInsights = [];
+    if (!Array.isArray(rawObj.suggestedIngredientsForRecipe))
+      rawObj.suggestedIngredientsForRecipe = [];
+  }
+
+  const validationResult = FoodPhotoAnalysisResult.safeParse(parsedJson);
+  if (!validationResult.success) {
+    console.error(
+      "[aiService] FoodPhotoAnalysisResult validation failed:",
+      validationResult.error.flatten(),
+    );
+    console.error("[aiService] Raw parsed JSON (post-normalization):", JSON.stringify(parsedJson));
+    await logAIGeneration({
+      userId,
+      input: { mealContext: input.mealContext, filename: input.filename },
+      model: successfulModel,
+      status: "failed",
+      latencyMs,
+      errorCategory: "invalid_output",
+    });
+    throw new ApiError(
+      502,
+      "AI_PROVIDER_ERROR",
+      "AI food analysis output did not pass validation requirements.",
+    );
+  }
+
+  await logAIGeneration({
+    userId,
+    input: { mealContext: input.mealContext, filename: input.filename },
+    model: successfulModel,
+    status: "success",
+    latencyMs,
+  });
+
+  return validationResult.data;
+}
+
