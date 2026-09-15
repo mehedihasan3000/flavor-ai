@@ -264,7 +264,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     try {
       await deleteRecipe(recipe.id, { token });
       toast.success(`"${recipe.title}" was deleted.`, { title: "Recipe deleted" });
-      router.push("/");
+      router.push("/dashboard");
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to delete recipe.";
       setActionError(msg);
