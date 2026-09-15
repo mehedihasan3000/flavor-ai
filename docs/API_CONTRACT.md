@@ -313,6 +313,71 @@ Same failure handling as the other AI endpoints above.
 
 ---
 
+## `/assistant` — Food & Nutrition AI Assistant (INFO.md feature)
+
+RAG assistant grounded in the caller's own data. All endpoints require auth
+(`requireAuth` + shared `aiRateLimiter`, 10 req/15 min, IP-scoped like the rest
+of the API rather than per-user — deliberate reuse of existing infrastructure).
+User identity always comes from `req.user` — no `userId` is accepted from the client.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/assistant/chat` | required | Context-aware chat answer + `contextUsed` |
+| POST | `/assistant/recommendations` | required | Ranked recipe recommendations (real IDs only) |
+| POST | `/assistant/pantry-suggestions` | required | DB-scored pantry matches, AI-ranked |
+| POST | `/assistant/macro-adjustments` | required | Structured macro-change suggestions (never overwrites plans) |
+
+**DB reality (verified against live data):** only `users`, `recipes`, and
+`favorites` are retrieved server-side (scoped to the caller). There is no
+pantry or diet-plan collection — `pantryItems` and `dailyPlan` arrive as
+optional client-supplied request context (same as the generator flow). Chat
+history is an optional client-supplied recent window (max 10 turns); nothing is
+persisted except `AIGenerationLog` telemetry (no new collection).
+
+**`POST /assistant/chat` body** (`AssistantChatInput`):
+```json
+{
+  "message": "What can I cook with the ingredients in my pantry?",
+  "pantryItems": ["chicken breast", { "name": "rice", "quantity": 1, "unit": "kg" }],
+  "dailyPlan": { "calories": 2300, "proteinGrams": 120 },
+  "history": [{ "role": "user", "message": "Hi" }]
+}
+```
+`message` 1–2000 chars (trimmed). → 200 `{ message, contextUsed: ["profile","favorites","pantry","dailyPlan","recipes"] }`.
+
+**`POST /assistant/recommendations` body** (`AssistantRecommendationInput`):
+```json
+{ "goal": "high-protein-dinner", "limit": 5, "pantryItems": ["chicken"], "dailyPlan": { "calories": 2300 } }
+```
+→ 200 `{ recommendations: [{ recipeId, title, reason, matchScore }] }`.
+IDs outside the served candidate/favorite set are discarded server-side (never
+fake); items conflicting with stored allergies are filtered. Empty array (200)
+when nothing fits.
+
+**`POST /assistant/pantry-suggestions` body** (`PantrySuggestionsInput`):
+```json
+{ "pantryItems": ["chicken", "rice", "tomatoes"], "limit": 5 }
+```
+`pantryItems` min 1, max 50. Published recipes are scored locally first
+(`usedCount`/`missingCount` via pantry matching); only top candidates reach the
+LLM for ranking. → 200 `{ suggestions: [{ recipeId, title, reason, matchScore, usedCount, missingCount }] }`.
+`{ suggestions: [] }` (200, no LLM call) when nothing matches.
+
+**`POST /assistant/macro-adjustments` body** (`MacroAdjustmentInput`):
+```json
+{ "request": "I need more protein but want to keep calories similar." }
+```
+Uses `dailyPlan` input or the profile's stored targets as baseline.
+→ 200 `{ recommendation: { calories, proteinGrams, carbohydratesGrams, fatGrams }, changes: [{ meal, change }], reason }`.
+Suggestions only — deterministic plans are never overwritten.
+
+**Failure handling:** 400 `VALIDATION_ERROR` on invalid shape; 401 without a
+token; 429 `RATE_LIMITED` on quota; timeout ≤30s → 504, provider/invalid-output
+→ 502 `AI_PROVIDER_ERROR`, safeMessage only. No new env vars — reuses
+`GROQ_API_KEY` / `GROQ_MODEL` / `AI_REQUEST_TIMEOUT_MS` (server-only).
+
+---
+
 ## `/diet` — diet plan & nutrition calculator (INFO.md feature)
 
 | Method | Path | Auth | Description |

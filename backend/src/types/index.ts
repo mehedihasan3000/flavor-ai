@@ -361,6 +361,128 @@ export const DietPlanResult = z.object({
 export type DietPlanResult = z.infer<typeof DietPlanResult>;
 
 // ---------------------------------------------------------------------------
+// Food & Nutrition AI Assistant (INFO.md / AI_ASSISTANT_SPEC.md)
+// ---------------------------------------------------------------------------
+// DB reality (verified against the live flavor-ai database): there is NO
+// pantry collection and diet plans are never stored (pure calculation), so
+// pantry items and daily-plan targets arrive as client-supplied request
+// context (same as the recipe generator flow). Only users, recipes, and
+// favorites are retrieved server-side — always scoped to req.user.
+
+/** Which context buckets were assembled for an assistant request. */
+export const ASSISTANT_CONTEXT = [
+  "profile",
+  "favorites",
+  "pantry",
+  "dailyPlan",
+  "recipes",
+] as const;
+
+/** Client-supplied daily targets (e.g. copied from the /diet-plan page output). */
+export const AssistantDailyPlan = z.object({
+  calories: z.number().int().positive().max(20000).optional(),
+  proteinGrams: z.number().int().nonnegative().max(2000).optional(),
+});
+
+export type AssistantDailyPlan = z.infer<typeof AssistantDailyPlan>;
+
+/** A single chat history turn (client-supplied recent window only). */
+export const AssistantHistoryTurn = z.object({
+  role: z.enum(["user", "assistant"]),
+  message: z.string().min(1).max(2000),
+});
+
+export type AssistantHistoryTurn = z.infer<typeof AssistantHistoryTurn>;
+
+export const AssistantChatInput = z.object({
+  message: z.string().trim().min(1, "Message cannot be empty").max(2000),
+  pantryItems: z.array(z.union([z.string().min(1).max(100), IngredientInput])).max(50).default([]),
+  dailyPlan: AssistantDailyPlan.optional(),
+  history: z.array(AssistantHistoryTurn).max(10).default([]),
+});
+
+export type AssistantChatInput = z.infer<typeof AssistantChatInput>;
+
+export const AssistantChatResult = z.object({
+  message: z.string().min(1),
+  contextUsed: z.array(z.enum(ASSISTANT_CONTEXT)),
+});
+
+export type AssistantChatResult = z.infer<typeof AssistantChatResult>;
+
+export const AssistantRecommendationInput = z.object({
+  goal: z.string().trim().max(200).optional(),
+  limit: z.number().int().min(1).max(20).default(5),
+  pantryItems: z.array(z.union([z.string().min(1).max(100), IngredientInput])).max(50).default([]),
+  dailyPlan: AssistantDailyPlan.optional(),
+});
+
+export type AssistantRecommendationInput = z.infer<typeof AssistantRecommendationInput>;
+
+export const AssistantRecommendation = z.object({
+  recipeId: ObjectIdString,
+  title: z.string().min(1).max(120),
+  reason: z.string().min(3).max(300),
+  matchScore: z.number().min(0).max(100),
+});
+
+export type AssistantRecommendation = z.infer<typeof AssistantRecommendation>;
+
+export const AssistantRecommendationResult = z.object({
+  recommendations: z.array(AssistantRecommendation),
+});
+
+export type AssistantRecommendationResult = z.infer<typeof AssistantRecommendationResult>;
+
+export const PantrySuggestionsInput = z.object({
+  pantryItems: z
+    .array(z.union([z.string().min(1).max(100), IngredientInput]))
+    .min(1, "At least one pantry item is required")
+    .max(50),
+  limit: z.number().int().min(1).max(20).default(5),
+});
+
+export type PantrySuggestionsInput = z.infer<typeof PantrySuggestionsInput>;
+
+export const PantrySuggestion = AssistantRecommendation.extend({
+  usedCount: z.number().int().nonnegative(),
+  missingCount: z.number().int().nonnegative(),
+});
+
+export type PantrySuggestion = z.infer<typeof PantrySuggestion>;
+
+export const PantrySuggestionsResult = z.object({
+  suggestions: z.array(PantrySuggestion),
+});
+
+export type PantrySuggestionsResult = z.infer<typeof PantrySuggestionsResult>;
+
+export const MacroAdjustmentInput = z.object({
+  request: z.string().trim().min(1, "Request cannot be empty").max(500),
+  dailyPlan: AssistantDailyPlan.optional(),
+});
+
+export type MacroAdjustmentInput = z.infer<typeof MacroAdjustmentInput>;
+
+export const MacroAdjustmentResult = z.object({
+  recommendation: z.object({
+    calories: z.number().int().nonnegative(),
+    proteinGrams: z.number().int().nonnegative(),
+    carbohydratesGrams: z.number().int().nonnegative(),
+    fatGrams: z.number().int().nonnegative(),
+  }),
+  changes: z.array(
+    z.object({
+      meal: z.string().min(1).max(100),
+      change: z.string().min(3).max(300),
+    }),
+  ),
+  reason: z.string().min(3).max(500),
+});
+
+export type MacroAdjustmentResult = z.infer<typeof MacroAdjustmentResult>;
+
+// ---------------------------------------------------------------------------
 // Pantry matching (FR-PANTRY-02/03)
 // ---------------------------------------------------------------------------
 

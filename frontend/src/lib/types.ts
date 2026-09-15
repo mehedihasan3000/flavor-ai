@@ -317,6 +317,83 @@ export interface RecipeSearchQuery extends PaginationQuery {
   status?: RecipeStatus;
 }
 
+/** Food & Nutrition AI Assistant (INFO.md feature). Pantry items and daily-plan
+ * targets are client-supplied request context: the database has no pantry or
+ * diet-plan collections (verified), matching the recipe generator flow. */
+export type AssistantContextKey = "profile" | "favorites" | "pantry" | "dailyPlan" | "recipes";
+
+export interface AssistantDailyPlan {
+  calories?: number;
+  proteinGrams?: number;
+}
+
+export type AssistantPantryItem = string | IngredientInput;
+
+export interface AssistantHistoryTurn {
+  role: "user" | "assistant";
+  message: string;
+}
+
+export interface AssistantChatInput {
+  message: string;
+  pantryItems?: AssistantPantryItem[];
+  dailyPlan?: AssistantDailyPlan;
+  history?: AssistantHistoryTurn[];
+}
+
+export interface AssistantChatResult {
+  message: string;
+  contextUsed: AssistantContextKey[];
+}
+
+export interface AssistantRecommendationInput {
+  goal?: string;
+  limit?: number;
+  pantryItems?: AssistantPantryItem[];
+  dailyPlan?: AssistantDailyPlan;
+}
+
+export interface AssistantRecommendation {
+  recipeId: string;
+  title: string;
+  reason: string;
+  matchScore: number;
+}
+
+export interface AssistantRecommendationResult {
+  recommendations: AssistantRecommendation[];
+}
+
+export interface PantrySuggestionsInput {
+  pantryItems: AssistantPantryItem[];
+  limit?: number;
+}
+
+export interface PantrySuggestion extends AssistantRecommendation {
+  usedCount: number;
+  missingCount: number;
+}
+
+export interface PantrySuggestionsResult {
+  suggestions: PantrySuggestion[];
+}
+
+export interface MacroAdjustmentInput {
+  request: string;
+  dailyPlan?: AssistantDailyPlan;
+}
+
+export interface MacroAdjustmentResult {
+  recommendation: {
+    calories: number;
+    proteinGrams: number;
+    carbohydratesGrams: number;
+    fatGrams: number;
+  };
+  changes: Array<{ meal: string; change: string }>;
+  reason: string;
+}
+
 /** Additive (post-freeze): `GET /users/me/stats`. */
 export interface DashboardStats {
   totalRecipes: number;
