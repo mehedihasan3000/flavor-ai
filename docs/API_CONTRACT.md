@@ -313,6 +313,57 @@ Same failure handling as the other AI endpoints above.
 
 ---
 
+## `/diet` — diet plan & nutrition calculator (INFO.md feature)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/diet/plan` | required | Calculate BMI, BMR, calorie/protein targets + food plan from body metrics |
+
+**`POST /diet/plan` body** (`DietPlanInput`):
+```json
+{
+  "age": 30,
+  "weightKg": 70,
+  "heightCm": 175,
+  "sex": "male",
+  "activityLevel": "moderate",
+  "dietaryPreference": "vegetarian"
+}
+```
+`age` 1–120 (int), `weightKg` 20–300, `heightCm` 50–250 (numeric strings are
+coerced), `sex`: `male | female`, `activityLevel`:
+`sedentary | light | moderate | active | very-active`, `dietaryPreference`:
+optional `DietaryLabel` (best-effort filter on the suggested protein foods:
+`vegan` → plant-only, `vegetarian` → no meat/fish, `dairy-free` → no dairy,
+`keto`/`low-carb` → no legumes; `halal`/`gluten-free`/`high-protein` use the
+default plan since the database contains no pork and every item is
+intrinsically gluten-free and protein-rich — compliance is never guaranteed,
+see the response disclaimer).
+
+→ 200 `DietPlanResult`:
+```json
+{
+  "bmi": 22.9,
+  "bmiCategory": "Normal weight",
+  "bmrCalories": 1649,
+  "dailyCalories": 2556,
+  "protein": { "min": 84, "max": 126, "estimate": 105 },
+  "foodPlan": [
+    { "food": "Chicken breast (skinless)", "portion": "135 g", "proteinGrams": 42, "note": "Cooked weight" },
+    { "food": "Eggs", "portion": "5 large eggs", "proteinGrams": 30, "note": "Boiled or poached" }
+  ],
+  "disclaimer": "These values are estimates for general guidance only and are not medical advice. Food suggestions are filtered on a best-effort basis..."
+}
+```
+Formulas: BMI = kg/m² (WHO cut-offs); BMR = Mifflin-St Jeor (clamped at ≥ 0 —
+extreme inputs can otherwise drive the equation negative); daily calories =
+BMR × activity factor (1.2 / 1.375 / 1.55 / 1.725 / 1.9); protein = weight-based
+g/kg/day band per activity level. The response is re-validated against
+`DietPlanResult` server-side before sending. Pure calculation — nothing is
+stored, no AI provider involved. 400 on invalid shape, 401 without a Bearer token.
+
+---
+
 ## `/recipes/:id/ratings` — ratings (M4)
 
 | Method | Path | Auth | Description |

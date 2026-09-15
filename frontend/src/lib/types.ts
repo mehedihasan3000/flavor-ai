@@ -393,6 +393,44 @@ export interface UpdateProfileInput {
   preferences?: DietaryPreferences;
 }
 
+// ─── Personalized Diet Plan & Nutrition Calculator (INFO.md feature) ──────────
+
+export type Sex = "male" | "female";
+
+export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very-active";
+
+export type BmiCategory = "Underweight" | "Normal weight" | "Overweight" | "Obesity";
+
+export interface DietPlanInput {
+  age: number;
+  weightKg: number;
+  heightCm: number;
+  sex: Sex;
+  activityLevel: ActivityLevel;
+  dietaryPreference?: DietaryLabel;
+}
+
+export interface DietPlanFoodItem {
+  food: string;
+  portion: string;
+  proteinGrams: number;
+  note?: string;
+}
+
+export interface DietPlanResult {
+  bmi: number;
+  bmiCategory: BmiCategory;
+  bmrCalories: number;
+  dailyCalories: number;
+  protein: {
+    min: number;
+    max: number;
+    estimate: number;
+  };
+  foodPlan: DietPlanFoodItem[];
+  disclaimer: string;
+}
+
 // ─── Admin (FR-ADMIN-01..04) ─────────────────────────────────────────────────
 
 export interface AdminUser {
