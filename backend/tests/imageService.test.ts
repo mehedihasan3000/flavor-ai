@@ -63,9 +63,9 @@ describe("imageService — Image Validation & Upload (NFR-SEC-08)", () => {
     }
   });
 
-  it("rejects file sizes exceeding 5 MB with 400 VALIDATION_ERROR", () => {
-    // 5.1 MB buffer
-    const largeBuffer = Buffer.alloc(5.1 * 1024 * 1024);
+  it("rejects file sizes exceeding 10 MB with 400 VALIDATION_ERROR", () => {
+    // 10.1 MB buffer
+    const largeBuffer = Buffer.alloc(10.1 * 1024 * 1024);
     const input: ImageUploadInput = {
       base64Data: largeBuffer.toString("base64"),
       mimeType: "image/jpeg",
@@ -77,8 +77,17 @@ describe("imageService — Image Validation & Upload (NFR-SEC-08)", () => {
     } catch (err: unknown) {
       expect((err as ApiError).status).toBe(400);
       expect((err as ApiError).code).toBe("VALIDATION_ERROR");
-      expect((err as ApiError).message).toContain("exceeds maximum allowed size of 5 MB");
+      expect((err as ApiError).message).toContain("exceeds maximum allowed size of 10 MB");
     }
+  });
+
+  it("accepts images up to 10 MB (compressed 10–15 MB originals fit transport)", () => {
+    const okBuffer = Buffer.alloc(9 * 1024 * 1024);
+    const { buffer } = validateImageInput({
+      base64Data: okBuffer.toString("base64"),
+      mimeType: "image/jpeg",
+    });
+    expect(buffer.length).toBe(9 * 1024 * 1024);
   });
 
   it("successfully uploads image to ImgBB and returns URL", async () => {

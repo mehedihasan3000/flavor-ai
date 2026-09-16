@@ -56,6 +56,10 @@ export default function NutritionAnalyzerPage() {
     setAnalyzing(true);
     setError(null);
 
+    // Backend vision timeout is 60s — abort just beyond it so the UI never hangs.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 70_000);
+
     try {
       const result = await analyzeFoodPhoto(
         {
@@ -65,17 +69,22 @@ export default function NutritionAnalyzerPage() {
           mealContext: mealContext.trim() || undefined,
           notes: notes.trim() || undefined,
         },
-        token ? { token } : {},
+        token ? { token, signal: controller.signal } : { signal: controller.signal },
       );
 
       setAnalysisResult(result);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Failed to analyze the photo. Please check your image and try again.";
-      setError(msg);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("Analysis timed out after ~60 seconds. Please try again with a smaller photo.");
+      } else {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Failed to analyze the photo. Please check your image and try again.";
+        setError(msg);
+      }
     } finally {
+      clearTimeout(timeoutId);
       setAnalyzing(false);
     }
   };
@@ -177,7 +186,7 @@ export default function NutritionAnalyzerPage() {
                   {analyzing ? (
                     <>
                       <Spinner className="size-4 mr-2" />
-                      <span>Analyzing Food Photo...</span>
+                      <span>Analyzing Food Photo… (up to ~60s)</span>
                     </>
                   ) : (
                     <>
@@ -186,6 +195,9 @@ export default function NutritionAnalyzerPage() {
                     </>
                   )}
                 </Button>
+                <p className="mt-2 text-center text-[11px] leading-relaxed text-subtle-foreground">
+                  Vision analysis can take up to a minute for large photos. Keep this tab open.
+                </p>
               </div>
             </div>
           </div>

@@ -273,7 +273,7 @@ contract had no endpoint.
 }
 ```
 
-**Failure handling:** timeout ≤30s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable.
+**Failure handling:** timeout ≤60s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable. The photo-nutrition route accepts JSON bodies up to 15 MB (≈10 MB decoded image; 10–15 MB originals are client-compressed).
 
 **Additive (post-freeze): `POST /ai/recipes/taste-match`** (required, `aiRateLimiter`) — AI
 Taste Matcher (FR-TASTE-01..03). Recommends existing **published** recipes that best match

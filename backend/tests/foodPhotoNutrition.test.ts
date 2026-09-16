@@ -172,14 +172,14 @@ describe("Food Photo Nutrition Analysis (FR-PHOTO-01..04)", () => {
   });
 
   describe("aiService.analyzeFoodPhoto unit tests", () => {
-    it("validates image size and rejects payloads larger than 5MB", async () => {
-      const hugeBase64 = Buffer.alloc(6 * 1024 * 1024).toString("base64");
+    it("validates image size and rejects payloads larger than 10MB", async () => {
+      const hugeBase64 = Buffer.alloc(11 * 1024 * 1024).toString("base64");
       await expect(
         aiService.analyzeFoodPhoto({
           image: hugeBase64,
           mimeType: "image/jpeg",
         }),
-      ).rejects.toThrow(/exceeds maximum allowed size of 5 MB/i);
+      ).rejects.toThrow(/exceeds maximum allowed size of 10 MB/i);
     });
 
     it("rejects unsupported MIME types", async () => {
@@ -235,6 +235,47 @@ describe("Food Photo Nutrition Analysis (FR-PHOTO-01..04)", () => {
           image: `data:image/png;base64,${smallBase64}`,
         }),
       ).rejects.toThrow(/Food photo nutrition analysis service unavailable/i);
+    });
+
+    it("retries only live Groq vision models (no retired llama previews)", async () => {
+      const smallBase64 = Buffer.from("fake-png-data").toString("base64");
+      const seenModels: string[] = [];
+      let firstModel: string | null = null;
+
+      const mockFetch = vi.fn().mockImplementation(async (_url: unknown, init?: { body?: string }) => {
+        const body = JSON.parse(init?.body ?? "{}") as { model?: string };
+        const model = body.model ?? "";
+        seenModels.push(model);
+        if (firstModel === null) firstModel = model;
+        // Simulate the primary model being rejected; any fallback succeeds.
+        if (model === firstModel) {
+          return { ok: false, status: 404, text: async () => "model_not_found" };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify(mockAnalysisResult) } }],
+          }),
+        };
+      });
+      global.fetch = mockFetch as unknown as typeof fetch;
+      const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+      const result = await aiService.analyzeFoodPhoto({
+        image: `data:image/png;base64,${smallBase64}`,
+      });
+
+      expect(result.dishName).toBe("Grilled Salmon with Asparagus and Quinoa");
+      // A fallback to a *different* model must have happened…
+      expect(new Set(seenModels).size).toBeGreaterThan(1);
+      // …and every model attempted is a live Groq vision model.
+      for (const model of seenModels) {
+        expect(model).toMatch(/^qwen\/qwen3\.[68]-27b$/);
+      }
+      // Success-path log carries metadata only — never the raw model payload.
+      for (const call of debugSpy.mock.calls) {
+        expect(JSON.stringify(call)).not.toContain("Grilled Salmon with Asparagus and Quinoa");
+      }
     });
   });
 

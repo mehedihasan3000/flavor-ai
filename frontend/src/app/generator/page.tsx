@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowRotateLeft,
   Check,
@@ -76,11 +77,46 @@ const GENERATION_PROGRESS_MESSAGES = [
   "Calculating nutrition estimates...",
 ];
 
-export default function GeneratorPage() {
-  const { token } = useAuth();
+/** Max ingredients accepted from a `?ingredients=` prefill link. */
+export const MAX_PREFILLED_INGREDIENTS = 20;
 
-  // Form State
-  const [ingredients, setIngredients] = useState<string[]>([]);
+/**
+ * Parses the `?ingredients=a, b, c` query param from the photo-nutrition
+ * "Generate Recipe" CTA into clean, deduped ingredient names. Pure + exported
+ * for unit tests.
+ */
+export function parsePrefilledIngredients(param: string | null): string[] {
+  if (!param) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of param.split(",")) {
+    const candidate = raw.trim().slice(0, 100);
+    if (!candidate) continue;
+    const key = candidate.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(candidate);
+    if (out.length >= MAX_PREFILLED_INGREDIENTS) break;
+  }
+  return out;
+}
+
+function GeneratorContent() {
+  const { token } = useAuth();
+  const searchParams = useSearchParams();
+
+  // Prefill from the photo-nutrition CTA (`/generator?ingredients=a, b`).
+  // useState initializers (render-time) keep this React-Compiler safe —
+  // no setState inside effects.
+  const [ingredients, setIngredients] = useState<string[]>(() =>
+    parsePrefilledIngredients(searchParams.get("ingredients")),
+  );
+  const [prefillNotice, setPrefillNotice] = useState<string | null>(() => {
+    const count = parsePrefilledIngredients(searchParams.get("ingredients")).length;
+    return count > 0
+      ? `Prefilled ${count} ingredient${count === 1 ? "" : "s"} from your photo analysis — review below and hit Generate.`
+      : null;
+  });
   const [dietaryLabels, setDietaryLabels] = useState<DietaryLabel[]>([]);
   const [mealType, setMealType] = useState<MealType | "">("");
   const [maxTime, setMaxTime] = useState<string>("");
@@ -293,7 +329,22 @@ export default function GeneratorPage() {
       {/* Main Grid Layout */}
       <div className="grid gap-8 lg:grid-cols-12">
         {/* Form Column */}
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-5 space-y-4">
+          {prefillNotice && (
+            <Alert variant="success" title="Ingredients prefilled from photo">
+              <div className="flex items-start justify-between gap-3">
+                <span>{prefillNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setPrefillNotice(null)}
+                  aria-label="Dismiss prefill notice"
+                  className="shrink-0 text-xs font-semibold underline hover:no-underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </Alert>
+          )}
           <Card className="p-6">
             <form onSubmit={handleGenerate} className="space-y-6">
               {/* Pantry Ingredients Input */}
@@ -719,5 +770,19 @@ export default function GeneratorPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function GeneratorPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+          <p className="text-center text-sm text-neutral-500">Loading recipe generator…</p>
+        </main>
+      }
+    >
+      <GeneratorContent />
+    </Suspense>
   );
 }
