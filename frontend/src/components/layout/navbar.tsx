@@ -8,7 +8,9 @@ import { useAuth } from "@/lib/auth-context";
 
 const NAV_LINKS = [
   { href: "/generator", label: "Generator" },
+  { href: "/assistant", label: "Assistant" },
   { href: "/nutrition-analyzer", label: "Photo Nutrition" },
+  { href: "/diet-plan", label: "Diet Plan" },
   { href: "/recipes", label: "Recipes" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/favorites", label: "Favorites" },

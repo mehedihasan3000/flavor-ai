@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { getSafeCallbackUrl } from "@/lib/auth-utils";
 
 declare global {
   interface Window {
@@ -66,7 +67,7 @@ export function GoogleSignInButton({
   const [gisReady, setGisReady] = useState(false);
   const [gisError, setGisError] = useState<string | null>(null);
 
-  const callbackUrl = redirectTo ?? searchParams.get("callbackUrl") ?? "/profile";
+  const callbackUrl = getSafeCallbackUrl(redirectTo ?? searchParams.get("callbackUrl"));
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim();
 
   const handleCredential = useCallback(

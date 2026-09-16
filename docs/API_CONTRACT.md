@@ -31,6 +31,8 @@ Smoke test. Returns 200 when MongoDB connected, 503 otherwise.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+| POST | `/auth/sign-up` | public | Create email/password account (scrypt hash, FR-AUTH-01/07) |
+| POST | `/auth/sign-in` | public | Verify email/password → user context (FR-AUTH-02/07, no auto-create) |
 | POST | `/auth/token/verify` | public | Verify signed JWT → user context (lazily upserts the user) |
 | POST | `/auth/logout` | required | Revoke current session/token (stateless: client discards the token) |
 
@@ -41,6 +43,28 @@ after a Better Auth session is confirmed; the secret never reaches browser JS
 (SRS §9.4). The token subject (`sub`) is the Better Auth user id, stored on the
 `User` document as `providerId`. Verification lives in `backend/src/middleware/auth.ts`.
 
+**`POST /auth/sign-up` body** (`CredentialSignUpInput`):
+```json
+{ "name": "Ada Lovelace", "email": "ada@example.com", "password": "s3cretP@ss!" }
+```
+→ 201 `{ user: { id, providerId, name, email, role: "user", avatarUrl } }`.
+New accounts are ALWAYS `role: "user"` (never derived from the email).
+409 `CONFLICT` if the email is already registered with a password.
+Addresses that exist without a password (legacy mock / Google-only docs) can
+claim the address here — the first password is set and the stored `providerId`
+is reused. 400 on invalid shape. Passwords are scrypt-hashed, never returned.
+
+**`POST /auth/sign-in` body** (`CredentialSignInInput`):
+```json
+{ "email": "ada@example.com", "password": "s3cretP@ss!" }
+```
+→ 200 `{ user: { id, providerId, name, email, role, avatarUrl } }`.
+401 `UNAUTHORIZED` for unknown email or wrong password (generic
+`"Invalid email or password."` to avoid account enumeration), or for
+password-less (Google-only) accounts (`"This account uses Google sign-in..."`).
+NEVER creates a user and NEVER returns the password hash. The frontend mints
+its Bearer JWT only after this endpoint confirms the credentials.
+
 **`POST /auth/token/verify` → 200**
 ```json
 {
@@ -49,6 +73,9 @@ after a Better Auth session is confirmed; the secret never reaches browser JS
 ```
 Users are matched by `providerId`; if absent, a new `User` is created (`role: "user"`,
 name defaults to `"User"` when the token carries no name). Invalid/expired token → 401.
+Note: email/password logins MUST go through `/auth/sign-in` first — `verify`
+upserts by design (Google first-login / Better Auth bridge), so calling it
+directly with a self-minted JWT would bypass credential checks.
 
 **`POST /auth/logout` → 204** — no body. Stateless JWT revocation is client-side;
 the endpoint exists for contract compliance.
@@ -177,6 +204,7 @@ contract had no endpoint.
 | POST | `/ai/recipes/generate` | required | Generate recipe from pantry + preferences (FR-AI-01..08) |
 | POST | `/ai/flavor-pairings` | required | Complementary ingredients/substitutions (FR-FLAVOR) |
 | POST | `/ai/nutrition/analyze-photo` | required | Analyze food photo for nutrition estimation (FR-PHOTO-01..04) |
+| POST | `/ai/recipes/taste-match` | required | **Additive:** recommend existing recipes matching taste preferences (FR-TASTE-01..03) |
 
 **`POST /ai/recipes/generate` body** (`AIRecipePromptInput`):
 ```json
@@ -246,6 +274,158 @@ contract had no endpoint.
 ```
 
 **Failure handling:** timeout ≤60s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable. The photo-nutrition route accepts JSON bodies up to 15 MB (≈10 MB decoded image; 10–15 MB originals are client-compressed).
+
+**Additive (post-freeze): `POST /ai/recipes/taste-match`** (required, `aiRateLimiter`) — AI
+Taste Matcher (FR-TASTE-01..03). Recommends existing **published** recipes that best match
+a user's taste preferences, instead of generating a new recipe. The backend pre-filters
+published recipes into a bounded candidate pool (via the existing text index and `tags`
+field — no schema change), then asks the AI to score/rank only within that pool; any
+`recipeId` the model returns outside the offered candidates is discarded server-side.
+
+Body (`TasteMatchInput`):
+```json
+{
+  "tastes": ["spicy", "umami"],
+  "intensity": "strong",
+  "notes": "not too oily, prefer noodle or rice dishes",
+  "limit": 10
+}
+```
+`tastes` (required, 1-6 of `"spicy" | "sweet" | "salty" | "sour" | "bitter" | "umami"`),
+`intensity` (optional, `"mild" | "medium" | "strong"`), `notes` (optional, max 300 chars),
+`limit` (optional, default 10, max 20).
+
+→ 200:
+```json
+{
+  "matches": [
+    {
+      "recipe": { "id": "...", "title": "Spicy Miso Ramen", "...": "full Recipe object, same shape as GET /recipes/:id" },
+      "score": 92,
+      "matchedTastes": ["spicy", "umami"],
+      "reason": "Chili oil and miso broth deliver a strong spicy-umami combination."
+    }
+  ]
+}
+```
+Returns `{ "matches": [] }` (200, not an error) when no published recipes exist yet.
+Same failure handling as the other AI endpoints above.
+
+---
+
+## `/assistant` — Food & Nutrition AI Assistant (INFO.md feature)
+
+RAG assistant grounded in the caller's own data. All endpoints require auth
+(`requireAuth` + shared `aiRateLimiter`, 10 req/15 min, IP-scoped like the rest
+of the API rather than per-user — deliberate reuse of existing infrastructure).
+User identity always comes from `req.user` — no `userId` is accepted from the client.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/assistant/chat` | required | Context-aware chat answer + `contextUsed` |
+| POST | `/assistant/recommendations` | required | Ranked recipe recommendations (real IDs only) |
+| POST | `/assistant/pantry-suggestions` | required | DB-scored pantry matches, AI-ranked |
+| POST | `/assistant/macro-adjustments` | required | Structured macro-change suggestions (never overwrites plans) |
+
+**DB reality (verified against live data):** only `users`, `recipes`, and
+`favorites` are retrieved server-side (scoped to the caller). There is no
+pantry or diet-plan collection — `pantryItems` and `dailyPlan` arrive as
+optional client-supplied request context (same as the generator flow). Chat
+history is an optional client-supplied recent window (max 10 turns); nothing is
+persisted except `AIGenerationLog` telemetry (no new collection).
+
+**`POST /assistant/chat` body** (`AssistantChatInput`):
+```json
+{
+  "message": "What can I cook with the ingredients in my pantry?",
+  "pantryItems": ["chicken breast", { "name": "rice", "quantity": 1, "unit": "kg" }],
+  "dailyPlan": { "calories": 2300, "proteinGrams": 120 },
+  "history": [{ "role": "user", "message": "Hi" }]
+}
+```
+`message` 1–2000 chars (trimmed). → 200 `{ message, contextUsed: ["profile","favorites","pantry","dailyPlan","recipes"] }`.
+
+**`POST /assistant/recommendations` body** (`AssistantRecommendationInput`):
+```json
+{ "goal": "high-protein-dinner", "limit": 5, "pantryItems": ["chicken"], "dailyPlan": { "calories": 2300 } }
+```
+→ 200 `{ recommendations: [{ recipeId, title, reason, matchScore }] }`.
+IDs outside the served candidate/favorite set are discarded server-side (never
+fake); items conflicting with stored allergies are filtered. Empty array (200)
+when nothing fits.
+
+**`POST /assistant/pantry-suggestions` body** (`PantrySuggestionsInput`):
+```json
+{ "pantryItems": ["chicken", "rice", "tomatoes"], "limit": 5 }
+```
+`pantryItems` min 1, max 50. Published recipes are scored locally first
+(`usedCount`/`missingCount` via pantry matching); only top candidates reach the
+LLM for ranking. → 200 `{ suggestions: [{ recipeId, title, reason, matchScore, usedCount, missingCount }] }`.
+`{ suggestions: [] }` (200, no LLM call) when nothing matches.
+
+**`POST /assistant/macro-adjustments` body** (`MacroAdjustmentInput`):
+```json
+{ "request": "I need more protein but want to keep calories similar." }
+```
+Uses `dailyPlan` input or the profile's stored targets as baseline.
+→ 200 `{ recommendation: { calories, proteinGrams, carbohydratesGrams, fatGrams }, changes: [{ meal, change }], reason }`.
+Suggestions only — deterministic plans are never overwritten.
+
+**Failure handling:** 400 `VALIDATION_ERROR` on invalid shape; 401 without a
+token; 429 `RATE_LIMITED` on quota; timeout ≤30s → 504, provider/invalid-output
+→ 502 `AI_PROVIDER_ERROR`, safeMessage only. No new env vars — reuses
+`GROQ_API_KEY` / `GROQ_MODEL` / `AI_REQUEST_TIMEOUT_MS` (server-only).
+
+---
+
+## `/diet` — diet plan & nutrition calculator (INFO.md feature)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/diet/plan` | required | Calculate BMI, BMR, calorie/protein targets + food plan from body metrics |
+
+**`POST /diet/plan` body** (`DietPlanInput`):
+```json
+{
+  "age": 30,
+  "weightKg": 70,
+  "heightCm": 175,
+  "sex": "male",
+  "activityLevel": "moderate",
+  "dietaryPreference": "vegetarian"
+}
+```
+`age` 1–120 (int), `weightKg` 20–300, `heightCm` 50–250 (numeric strings are
+coerced), `sex`: `male | female`, `activityLevel`:
+`sedentary | light | moderate | active | very-active`, `dietaryPreference`:
+optional `DietaryLabel` (best-effort filter on the suggested protein foods:
+`vegan` → plant-only, `vegetarian` → no meat/fish, `dairy-free` → no dairy,
+`keto`/`low-carb` → no legumes; `halal`/`gluten-free`/`high-protein` use the
+default plan since the database contains no pork and every item is
+intrinsically gluten-free and protein-rich — compliance is never guaranteed,
+see the response disclaimer).
+
+→ 200 `DietPlanResult`:
+```json
+{
+  "bmi": 22.9,
+  "bmiCategory": "Normal weight",
+  "bmrCalories": 1649,
+  "dailyCalories": 2556,
+  "protein": { "min": 84, "max": 126, "estimate": 105 },
+  "foodPlan": [
+    { "food": "Chicken breast (skinless)", "portion": "135 g", "proteinGrams": 42, "note": "Cooked weight" },
+    { "food": "Eggs", "portion": "5 large eggs", "proteinGrams": 30, "note": "Boiled or poached" }
+  ],
+  "disclaimer": "These values are estimates for general guidance only and are not medical advice. Food suggestions are filtered on a best-effort basis..."
+}
+```
+Formulas: BMI = kg/m² (WHO cut-offs); BMR = Mifflin-St Jeor (clamped at ≥ 0 —
+extreme inputs can otherwise drive the equation negative); daily calories =
+BMR × activity factor (1.2 / 1.375 / 1.55 / 1.725 / 1.9); protein = weight-based
+g/kg/day band per activity level. The response is re-validated against
+`DietPlanResult` server-side before sending. Pure calculation — nothing is
+stored, no AI provider involved. 400 on invalid shape, 401 without a Bearer token.
 
 ---
 

@@ -24,6 +24,9 @@ export type RecipeCategory =
   | "baking"
   | "beverage";
 
+export type TasteProfile = "spicy" | "sweet" | "salty" | "sour" | "bitter" | "umami";
+export type TasteIntensity = "mild" | "medium" | "strong";
+
 export type CommentStatus = "visible" | "moderated";
 export type PantryMatchStatus = "used" | "missing" | "substitution";
 export type RecipeSort = "newest" | "highest-rated" | "most-popular";
@@ -149,6 +152,24 @@ export interface FlavorPairingSuggestion {
   ingredient: string;
   reason: string;
   type: "addition" | "substitution";
+}
+
+// ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03) — Additive (post-freeze)
+// ---------------------------------------------------------------------------
+
+export interface TasteMatchInput {
+  tastes: TasteProfile[];
+  intensity?: TasteIntensity;
+  notes?: string;
+  limit?: number;
+}
+
+export interface TasteMatchResult {
+  recipe: RecipeCardData;
+  score: number;
+  matchedTastes: TasteProfile[];
+  reason: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +317,83 @@ export interface RecipeSearchQuery extends PaginationQuery {
   status?: RecipeStatus;
 }
 
+/** Food & Nutrition AI Assistant (INFO.md feature). Pantry items and daily-plan
+ * targets are client-supplied request context: the database has no pantry or
+ * diet-plan collections (verified), matching the recipe generator flow. */
+export type AssistantContextKey = "profile" | "favorites" | "pantry" | "dailyPlan" | "recipes";
+
+export interface AssistantDailyPlan {
+  calories?: number;
+  proteinGrams?: number;
+}
+
+export type AssistantPantryItem = string | IngredientInput;
+
+export interface AssistantHistoryTurn {
+  role: "user" | "assistant";
+  message: string;
+}
+
+export interface AssistantChatInput {
+  message: string;
+  pantryItems?: AssistantPantryItem[];
+  dailyPlan?: AssistantDailyPlan;
+  history?: AssistantHistoryTurn[];
+}
+
+export interface AssistantChatResult {
+  message: string;
+  contextUsed: AssistantContextKey[];
+}
+
+export interface AssistantRecommendationInput {
+  goal?: string;
+  limit?: number;
+  pantryItems?: AssistantPantryItem[];
+  dailyPlan?: AssistantDailyPlan;
+}
+
+export interface AssistantRecommendation {
+  recipeId: string;
+  title: string;
+  reason: string;
+  matchScore: number;
+}
+
+export interface AssistantRecommendationResult {
+  recommendations: AssistantRecommendation[];
+}
+
+export interface PantrySuggestionsInput {
+  pantryItems: AssistantPantryItem[];
+  limit?: number;
+}
+
+export interface PantrySuggestion extends AssistantRecommendation {
+  usedCount: number;
+  missingCount: number;
+}
+
+export interface PantrySuggestionsResult {
+  suggestions: PantrySuggestion[];
+}
+
+export interface MacroAdjustmentInput {
+  request: string;
+  dailyPlan?: AssistantDailyPlan;
+}
+
+export interface MacroAdjustmentResult {
+  recommendation: {
+    calories: number;
+    proteinGrams: number;
+    carbohydratesGrams: number;
+    fatGrams: number;
+  };
+  changes: Array<{ meal: string; change: string }>;
+  reason: string;
+}
+
 /** Additive (post-freeze): `GET /users/me/stats`. */
 export interface DashboardStats {
   totalRecipes: number;
@@ -370,6 +468,44 @@ export interface UpdateProfileInput {
   avatarUrl?: string | null;
   bio?: string;
   preferences?: DietaryPreferences;
+}
+
+// ─── Personalized Diet Plan & Nutrition Calculator (INFO.md feature) ──────────
+
+export type Sex = "male" | "female";
+
+export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very-active";
+
+export type BmiCategory = "Underweight" | "Normal weight" | "Overweight" | "Obesity";
+
+export interface DietPlanInput {
+  age: number;
+  weightKg: number;
+  heightCm: number;
+  sex: Sex;
+  activityLevel: ActivityLevel;
+  dietaryPreference?: DietaryLabel;
+}
+
+export interface DietPlanFoodItem {
+  food: string;
+  portion: string;
+  proteinGrams: number;
+  note?: string;
+}
+
+export interface DietPlanResult {
+  bmi: number;
+  bmiCategory: BmiCategory;
+  bmrCalories: number;
+  dailyCalories: number;
+  protein: {
+    min: number;
+    max: number;
+    estimate: number;
+  };
+  foodPlan: DietPlanFoodItem[];
+  disclaimer: string;
 }
 
 // ─── Admin (FR-ADMIN-01..04) ─────────────────────────────────────────────────

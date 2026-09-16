@@ -8,16 +8,26 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   hint?: string;
   error?: string;
+  wrapperClassName?: string;
 }
 
-export function Input({ label, hint, error, id: idProp, required, className, ...props }: InputProps) {
+export function Input({
+  label,
+  hint,
+  error,
+  id: idProp,
+  required,
+  className,
+  wrapperClassName,
+  ...props
+}: InputProps) {
   const autoId = useId();
   const id = idProp ?? autoId;
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
 
   return (
-    <div className="w-full">
+    <div className={["w-full", wrapperClassName].filter(Boolean).join(" ")}>
       {label ? (
         <FieldLabel htmlFor={id} required={required}>
           {label}

@@ -7,12 +7,18 @@ import type {
   AdminUserSearchQuery,
   AIRecipeOutput,
   AIRecipePromptInput,
+  AssistantChatInput,
+  AssistantChatResult,
+  AssistantRecommendationInput,
+  AssistantRecommendationResult,
   Comment,
   CommentStatus,
   CreateCommentInput,
   CreateRatingInput,
   CreateRecipeInput,
   DashboardStats,
+  DietPlanInput,
+  DietPlanResult,
   ErrorCode,
   ErrorEnvelope,
   FavoriteItem,
@@ -21,13 +27,19 @@ import type {
   FlavorPairingSuggestion,
   FoodPhotoAnalysisInput,
   FoodPhotoAnalysisResult,
+  MacroAdjustmentInput,
+  MacroAdjustmentResult,
   PaginatedResult,
   PaginationQuery,
   PantryMatchResult,
+  PantrySuggestionsInput,
+  PantrySuggestionsResult,
   Rating,
   RatingSummary,
   Recipe,
   RecipeSearchQuery,
+  TasteMatchInput,
+  TasteMatchResult,
   UpdateCommentInput,
   UpdateProfileInput,
   UpdateRecipeInput,
@@ -256,11 +268,81 @@ export async function suggestFlavorPairings(
   return { pairings: res.suggestions ?? [] };
 }
 
+export async function matchRecipesToTaste(
+  input: TasteMatchInput,
+  options: RequestOptions = {},
+): Promise<{ matches: TasteMatchResult[] }> {
+  return request<{ matches: TasteMatchResult[] }>("/ai/recipes/taste-match", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
 export async function analyzeFoodPhoto(
   input: FoodPhotoAnalysisInput,
   options: RequestOptions = {},
 ): Promise<FoodPhotoAnalysisResult> {
   return request<FoodPhotoAnalysisResult>("/ai/nutrition/analyze-photo", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+// ─── Food & Nutrition AI Assistant (INFO.md feature) ─────────────────────────
+
+export async function chatWithAssistant(
+  input: AssistantChatInput,
+  options: RequestOptions = {},
+): Promise<AssistantChatResult> {
+  return request<AssistantChatResult>("/assistant/chat", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getAssistantRecommendations(
+  input: AssistantRecommendationInput = {},
+  options: RequestOptions = {},
+): Promise<AssistantRecommendationResult> {
+  return request<AssistantRecommendationResult>("/assistant/recommendations", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getPantrySuggestions(
+  input: PantrySuggestionsInput,
+  options: RequestOptions = {},
+): Promise<PantrySuggestionsResult> {
+  return request<PantrySuggestionsResult>("/assistant/pantry-suggestions", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getMacroAdjustments(
+  input: MacroAdjustmentInput,
+  options: RequestOptions = {},
+): Promise<MacroAdjustmentResult> {
+  return request<MacroAdjustmentResult>("/assistant/macro-adjustments", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+// ─── Diet Plan (INFO.md feature) ─────────────────────────────────────────────
+
+export async function getDietPlan(
+  input: DietPlanInput,
+  options: RequestOptions = {},
+): Promise<DietPlanResult> {
+  return request<DietPlanResult>("/diet/plan", {
     ...options,
     method: "POST",
     body: input,

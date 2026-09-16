@@ -37,6 +37,9 @@ export const RECIPE_CATEGORY = [
   "beverage",
 ] as const;
 
+export const TASTE_PROFILE = ["spicy", "sweet", "salty", "sour", "bitter", "umami"] as const;
+export const TASTE_INTENSITY = ["mild", "medium", "strong"] as const;
+
 export const COMMENT_STATUS = ["visible", "moderated"] as const;
 export const AI_GENERATION_STATUS = ["success", "failed", "timeout"] as const;
 export const AI_ERROR_CATEGORY = [
@@ -207,6 +210,31 @@ export const FlavorPairingSuggestionSchema = z.object({
 export type FlavorPairingSuggestion = z.infer<typeof FlavorPairingSuggestionSchema>;
 
 // ---------------------------------------------------------------------------
+// AI Taste Matcher (FR-TASTE-01..03) — Additive (post-freeze)
+// ---------------------------------------------------------------------------
+
+export const TasteMatchInput = z.object({
+  tastes: z
+    .array(z.enum(TASTE_PROFILE))
+    .min(1, "Select at least one taste preference")
+    .max(TASTE_PROFILE.length),
+  intensity: z.enum(TASTE_INTENSITY).optional(),
+  notes: z.string().max(300).optional(),
+  limit: z.number().int().min(1).max(20).default(10),
+});
+
+export type TasteMatchInput = z.infer<typeof TasteMatchInput>;
+
+export const TasteMatchSuggestionSchema = z.object({
+  recipeId: ObjectIdString,
+  score: z.number().min(0).max(100),
+  matchedTastes: z.array(z.enum(TASTE_PROFILE)).default([]),
+  reason: z.string().min(3).max(300),
+});
+
+export type TasteMatchSuggestion = z.infer<typeof TasteMatchSuggestionSchema>;
+
+// ---------------------------------------------------------------------------
 // Food Photo Nutrition Analysis (FR-PHOTO-01..04)
 // ---------------------------------------------------------------------------
 
@@ -272,6 +300,187 @@ export const FoodPhotoAnalysisResult = z.object({
 });
 
 export type FoodPhotoAnalysisResult = z.infer<typeof FoodPhotoAnalysisResult>;
+
+// ---------------------------------------------------------------------------
+// Personalized Diet Plan & Nutrition Requirement Calculator (INFO.md feature)
+// ---------------------------------------------------------------------------
+
+export const SEX = ["male", "female"] as const;
+
+export const ACTIVITY_LEVEL = [
+  "sedentary",
+  "light",
+  "moderate",
+  "active",
+  "very-active",
+] as const;
+
+export const BMI_CATEGORY = [
+  "Underweight",
+  "Normal weight",
+  "Overweight",
+  "Obesity",
+] as const;
+
+export const DietPlanInput = z.object({
+  age: z.coerce.number().int().min(1, "Age must be at least 1").max(120, "Age must be at most 120"),
+  weightKg: z.coerce.number().min(20, "Weight must be at least 20 kg").max(300, "Weight must be at most 300 kg"),
+  heightCm: z.coerce.number().min(50, "Height must be at least 50 cm").max(250, "Height must be at most 250 cm"),
+  sex: z.enum(SEX),
+  activityLevel: z.enum(ACTIVITY_LEVEL),
+  dietaryPreference: z.enum(DIETARY_LABEL).optional(),
+});
+
+export type DietPlanInput = z.infer<typeof DietPlanInput>;
+
+export const DietPlanFoodItem = z.object({
+  food: z.string().min(1).max(100),
+  portion: z.string().min(1).max(100),
+  proteinGrams: z.number().nonnegative(),
+  note: z.string().max(200).optional(),
+});
+
+export type DietPlanFoodItem = z.infer<typeof DietPlanFoodItem>;
+
+export const DietPlanResult = z.object({
+  bmi: z.number().nonnegative(),
+  bmiCategory: z.enum(BMI_CATEGORY),
+  bmrCalories: z.number().int().nonnegative(),
+  dailyCalories: z.number().int().nonnegative(),
+  protein: z.object({
+    min: z.number().int().nonnegative(),
+    max: z.number().int().nonnegative(),
+    estimate: z.number().int().nonnegative(),
+  }),
+  foodPlan: z.array(DietPlanFoodItem).min(1),
+  disclaimer: z.string().default(
+    "These values are estimates for general guidance only and are not medical advice. Food suggestions are filtered on a best-effort basis and cannot guarantee compliance with dietary restrictions or allergen avoidance — always verify ingredients independently. Consult a registered dietitian or healthcare professional before making significant dietary changes.",
+  ),
+});
+
+export type DietPlanResult = z.infer<typeof DietPlanResult>;
+
+// ---------------------------------------------------------------------------
+// Food & Nutrition AI Assistant (INFO.md / AI_ASSISTANT_SPEC.md)
+// ---------------------------------------------------------------------------
+// DB reality (verified against the live flavor-ai database): there is NO
+// pantry collection and diet plans are never stored (pure calculation), so
+// pantry items and daily-plan targets arrive as client-supplied request
+// context (same as the recipe generator flow). Only users, recipes, and
+// favorites are retrieved server-side — always scoped to req.user.
+
+/** Which context buckets were assembled for an assistant request. */
+export const ASSISTANT_CONTEXT = [
+  "profile",
+  "favorites",
+  "pantry",
+  "dailyPlan",
+  "recipes",
+] as const;
+
+/** Client-supplied daily targets (e.g. copied from the /diet-plan page output). */
+export const AssistantDailyPlan = z.object({
+  calories: z.number().int().positive().max(20000).optional(),
+  proteinGrams: z.number().int().nonnegative().max(2000).optional(),
+});
+
+export type AssistantDailyPlan = z.infer<typeof AssistantDailyPlan>;
+
+/** A single chat history turn (client-supplied recent window only). */
+export const AssistantHistoryTurn = z.object({
+  role: z.enum(["user", "assistant"]),
+  message: z.string().min(1).max(2000),
+});
+
+export type AssistantHistoryTurn = z.infer<typeof AssistantHistoryTurn>;
+
+export const AssistantChatInput = z.object({
+  message: z.string().trim().min(1, "Message cannot be empty").max(2000),
+  pantryItems: z.array(z.union([z.string().min(1).max(100), IngredientInput])).max(50).default([]),
+  dailyPlan: AssistantDailyPlan.optional(),
+  history: z.array(AssistantHistoryTurn).max(10).default([]),
+});
+
+export type AssistantChatInput = z.infer<typeof AssistantChatInput>;
+
+export const AssistantChatResult = z.object({
+  message: z.string().min(1),
+  contextUsed: z.array(z.enum(ASSISTANT_CONTEXT)),
+});
+
+export type AssistantChatResult = z.infer<typeof AssistantChatResult>;
+
+export const AssistantRecommendationInput = z.object({
+  goal: z.string().trim().max(200).optional(),
+  limit: z.number().int().min(1).max(20).default(5),
+  pantryItems: z.array(z.union([z.string().min(1).max(100), IngredientInput])).max(50).default([]),
+  dailyPlan: AssistantDailyPlan.optional(),
+});
+
+export type AssistantRecommendationInput = z.infer<typeof AssistantRecommendationInput>;
+
+export const AssistantRecommendation = z.object({
+  recipeId: ObjectIdString,
+  title: z.string().min(1).max(120),
+  reason: z.string().min(3).max(300),
+  matchScore: z.number().min(0).max(100),
+});
+
+export type AssistantRecommendation = z.infer<typeof AssistantRecommendation>;
+
+export const AssistantRecommendationResult = z.object({
+  recommendations: z.array(AssistantRecommendation),
+});
+
+export type AssistantRecommendationResult = z.infer<typeof AssistantRecommendationResult>;
+
+export const PantrySuggestionsInput = z.object({
+  pantryItems: z
+    .array(z.union([z.string().min(1).max(100), IngredientInput]))
+    .min(1, "At least one pantry item is required")
+    .max(50),
+  limit: z.number().int().min(1).max(20).default(5),
+});
+
+export type PantrySuggestionsInput = z.infer<typeof PantrySuggestionsInput>;
+
+export const PantrySuggestion = AssistantRecommendation.extend({
+  usedCount: z.number().int().nonnegative(),
+  missingCount: z.number().int().nonnegative(),
+});
+
+export type PantrySuggestion = z.infer<typeof PantrySuggestion>;
+
+export const PantrySuggestionsResult = z.object({
+  suggestions: z.array(PantrySuggestion),
+});
+
+export type PantrySuggestionsResult = z.infer<typeof PantrySuggestionsResult>;
+
+export const MacroAdjustmentInput = z.object({
+  request: z.string().trim().min(1, "Request cannot be empty").max(500),
+  dailyPlan: AssistantDailyPlan.optional(),
+});
+
+export type MacroAdjustmentInput = z.infer<typeof MacroAdjustmentInput>;
+
+export const MacroAdjustmentResult = z.object({
+  recommendation: z.object({
+    calories: z.number().int().nonnegative(),
+    proteinGrams: z.number().int().nonnegative(),
+    carbohydratesGrams: z.number().int().nonnegative(),
+    fatGrams: z.number().int().nonnegative(),
+  }),
+  changes: z.array(
+    z.object({
+      meal: z.string().min(1).max(100),
+      change: z.string().min(3).max(300),
+    }),
+  ),
+  reason: z.string().min(3).max(500),
+});
+
+export type MacroAdjustmentResult = z.infer<typeof MacroAdjustmentResult>;
 
 // ---------------------------------------------------------------------------
 // Pantry matching (FR-PANTRY-02/03)
@@ -391,6 +600,25 @@ export const UpdateCommentInput = z.object({
 
 export type CreateCommentInput = z.infer<typeof CreateCommentInput>;
 export type UpdateCommentInput = z.infer<typeof UpdateCommentInput>;
+
+// ---------------------------------------------------------------------------
+// Email/password credentials (FR-AUTH-01/02/07)
+// ---------------------------------------------------------------------------
+
+export const CredentialSignUpInput = z.object({
+  name: z.string().trim().min(1, "Display name is required").max(100),
+  email: z.string().trim().toLowerCase().email("Please provide a valid email address").max(254),
+  password: z.string().min(8, "Password must be at least 8 characters long.").max(128),
+});
+
+export type CredentialSignUpInput = z.infer<typeof CredentialSignUpInput>;
+
+export const CredentialSignInInput = z.object({
+  email: z.string().trim().toLowerCase().email("Please provide a valid email address").max(254),
+  password: z.string().min(1, "Password is required").max(128),
+});
+
+export type CredentialSignInInput = z.infer<typeof CredentialSignInInput>;
 
 // ---------------------------------------------------------------------------
 // User profile / preferences (FR-AUTH-06)
