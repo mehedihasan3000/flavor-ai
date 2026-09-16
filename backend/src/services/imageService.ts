@@ -9,7 +9,10 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+// Transport limit for decoded image bytes. The photo-nutrition route accepts
+// base64/URL payloads up to this size (frontend compresses 10–15 MB originals
+// down below it; originals above 15 MB are rejected client-side).
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export interface ImageUploadInput {
   base64Data: string;
@@ -63,7 +66,7 @@ export function validateImageInput(input: ImageUploadInput): {
     throw new ApiError(
       400,
       "VALIDATION_ERROR",
-      `File size (${sizeMb} MB) exceeds maximum allowed size of 5 MB.`,
+      `File size (${sizeMb} MB) exceeds maximum allowed size of 10 MB. Originals up to 15 MB are auto-compressed in the app — please retry or use a smaller image.`,
     );
   }
 

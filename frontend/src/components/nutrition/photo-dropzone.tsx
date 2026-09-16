@@ -4,8 +4,109 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Camera, Picture, TriangleExclamation, Xmark, Sparkles } from "@gravity-ui/icons";
 import { Button } from "@/components/ui";
 
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+/** Largest original file the picker accepts. Files in (10 MB, 15 MB] are
+ * downscaled/compressed in-browser to fit the 10 MB transport limit. */
+export const MAX_ORIGINAL_BYTES = 15 * 1024 * 1024; // 15 MB
+/** Decoded-image bytes the API accepts (backend `validateImageInput`). */
+export const TRANSPORT_BINARY_LIMIT_BYTES = 10 * 1024 * 1024; // 10 MB
+const TARGET_COMPRESSED_BYTES = 9 * 1024 * 1024; // 9 MB headroom for base64 overhead
+const MAX_COMPRESSED_DIMENSION = 2048;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+function loadImageElement(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not decode the image file. Please try a different photo."));
+    };
+    img.src = url;
+  });
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality: number,
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read the image file. Please try again."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Downscales + JPEG-compresses a large photo until it fits the transport
+ * limit. Returns a data URL + mime type. Throws with a user-facing message
+ * when compression is unsupported or cannot fit.
+ */
+export async function compressImageFile(
+  file: File,
+): Promise<{ dataUrl: string; mimeType: string }> {
+  if (file.type.toLowerCase() === "image/gif") {
+    throw new Error(
+      "GIFs above 10 MB can't be auto-compressed. Please convert to JPG/PNG or use a smaller file.",
+    );
+  }
+  const img = await loadImageElement(file);
+  const naturalWidth = img.naturalWidth || img.width;
+  const naturalHeight = img.naturalHeight || img.height;
+  if (!naturalWidth || !naturalHeight) {
+    throw new Error("Could not decode the image file. Please try a different photo.");
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Image compression isn't supported in this browser. Please use a photo under 10 MB.");
+  }
+
+  const drawScaled = (scale: number) => {
+    const fit = Math.min(1, MAX_COMPRESSED_DIMENSION / Math.max(naturalWidth, naturalHeight));
+    const finalScale = Math.min(1, fit * scale);
+    canvas.width = Math.max(1, Math.round(naturalWidth * finalScale));
+    canvas.height = Math.max(1, Math.round(naturalHeight * finalScale));
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  };
+
+  // Pass 1: full (capped) dimensions across JPEG qualities.
+  drawScaled(1);
+  for (const quality of [0.92, 0.82, 0.72, 0.6, 0.5]) {
+    const blob = await canvasToBlob(canvas, "image/jpeg", quality);
+    if (blob && blob.size <= TARGET_COMPRESSED_BYTES) {
+      return { dataUrl: await blobToDataUrl(blob), mimeType: "image/jpeg" };
+    }
+  }
+
+  // Pass 2: shrink dimensions progressively, mid quality.
+  let scale = 0.8;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    drawScaled(scale);
+    const blob = await canvasToBlob(canvas, "image/jpeg", 0.72);
+    if (blob && blob.size <= TARGET_COMPRESSED_BYTES) {
+      return { dataUrl: await blobToDataUrl(blob), mimeType: "image/jpeg" };
+    }
+    scale *= 0.8;
+  }
+
+  throw new Error(
+    "Even after compression this photo exceeds 10 MB. Please use a smaller image or crop it first.",
+  );
+}
 
 export interface SampleFoodOption {
   id: string;
@@ -51,20 +152,10 @@ export function PhotoDropzone({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const busy = disabled || isCompressing;
 
-  const processFile = (file: File) => {
-    setError(null);
-
-    if (!ALLOWED_TYPES.includes(file.type.toLowerCase())) {
-      setError("Please upload a valid image file (JPEG, PNG, WebP, or GIF).");
-      return;
-    }
-
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      setError(`File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the 5 MB limit.`);
-      return;
-    }
-
+  const readDirect = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
@@ -76,6 +167,46 @@ export function PhotoDropzone({
     reader.readAsDataURL(file);
   };
 
+  const processFile = (file: File) => {
+    setError(null);
+
+    if (!ALLOWED_TYPES.includes(file.type.toLowerCase())) {
+      setError("Please upload a valid image file (JPEG, PNG, WebP, or GIF).");
+      return;
+    }
+
+    if (file.size > MAX_ORIGINAL_BYTES) {
+      setError(
+        `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the 15 MB limit. Please use a smaller photo.`,
+      );
+      return;
+    }
+
+    // Small enough to send as-is.
+    if (file.size <= TRANSPORT_BINARY_LIMIT_BYTES) {
+      readDirect(file);
+      return;
+    }
+
+    // Large (10–15 MB): compress in-browser below the 10 MB transport limit.
+    setIsCompressing(true);
+    compressImageFile(file)
+      .then(({ dataUrl, mimeType }) => {
+        const compressedName = file.name.replace(/\.[^.]+$/, "") || "photo";
+        onImageSelected(dataUrl, mimeType, `${compressedName}-compressed.jpg`);
+      })
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not compress this photo. Please use a smaller image.",
+        );
+      })
+      .finally(() => {
+        setIsCompressing(false);
+      });
+  };
+
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -85,7 +216,7 @@ export function PhotoDropzone({
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!disabled) setIsDragOver(true);
+    if (!busy) setIsDragOver(true);
   };
 
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
@@ -96,7 +227,7 @@ export function PhotoDropzone({
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (disabled) return;
+    if (busy) return;
 
     const file = e.dataTransfer.files?.[0];
     if (file) {
@@ -117,9 +248,19 @@ export function PhotoDropzone({
         accept="image/jpeg,image/png,image/webp,image/gif"
         onChange={handleFileChange}
         className="hidden"
-        disabled={disabled}
+        disabled={busy}
         aria-label="Upload food photo"
       />
+
+      {isCompressing && (
+        <div
+          className="flex items-center gap-2 rounded-xl border border-primary-strong/30 bg-primary-soft/20 p-3 text-xs font-medium text-primary-strong"
+          role="status"
+        >
+          <span className="size-4 shrink-0 animate-spin rounded-full border-2 border-primary-strong/30 border-t-primary-strong" />
+          <span>Compressing large photo (10–15 MB) to fit the 10 MB limit…</span>
+        </div>
+      )}
 
       {selectedImage ? (
         <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all">
@@ -130,7 +271,7 @@ export function PhotoDropzone({
               alt="Selected food preview"
               className="h-full w-full object-contain"
             />
-            {!disabled && (
+            {!busy && (
               <button
                 type="button"
                 onClick={onClear}
@@ -146,7 +287,7 @@ export function PhotoDropzone({
               <Picture className="size-4 text-primary-strong" aria-hidden="true" />
               Photo loaded for nutritional analysis
             </span>
-            {!disabled && (
+            {!busy && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -162,12 +303,12 @@ export function PhotoDropzone({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => !disabled && fileInputRef.current?.click()}
+          onClick={() => !busy && fileInputRef.current?.click()}
           className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition-all cursor-pointer ${
             isDragOver
               ? "border-primary-strong bg-primary-soft/30 scale-[1.01]"
               : "border-border hover:border-primary-strong/60 hover:bg-primary-soft/10 bg-card/40"
-          } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${busy ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           <div className="flex size-14 items-center justify-center rounded-2xl bg-primary-soft text-primary-strong shadow-sm mb-4">
             <Camera className="size-7" aria-hidden="true" />
@@ -176,21 +317,22 @@ export function PhotoDropzone({
             Upload or snap a food photo
           </h3>
           <p className="mt-1 text-sm text-subtle-foreground max-w-sm">
-            Drag & drop an image here, or browse from your device. Supported: JPG, PNG, WebP (max 5MB).
+            Drag & drop an image here, or browse from your device. Supported: JPG, PNG, WebP, GIF
+            (max 15 MB — larger photos auto-compress below 10 MB).
           </p>
           <div className="mt-4">
             <Button
               variant="outline"
               size="sm"
               type="button"
-              disabled={disabled}
+              disabled={busy}
               onClick={(e) => {
                 e.stopPropagation();
                 fileInputRef.current?.click();
               }}
             >
               <Picture className="size-4 mr-1.5" aria-hidden="true" />
-              Browse Image
+              {isCompressing ? "Compressing…" : "Browse Image"}
             </Button>
           </div>
         </div>
@@ -204,7 +346,7 @@ export function PhotoDropzone({
       )}
 
       {/* Preset demo options */}
-      {!selectedImage && !disabled && (
+      {!selectedImage && !busy && (
         <div className="rounded-xl border border-border/80 bg-card/60 p-4">
           <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-subtle-foreground mb-3">
             <Sparkles className="size-3.5 text-primary-strong" aria-hidden="true" />

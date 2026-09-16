@@ -652,16 +652,14 @@ export async function analyzeFoodPhoto(
     input.notes,
   );
 
-  const primaryModel = env.GROQ_MODEL_FOR_IMAGE || "qwen/qwen3.6-27b";
-  // Fallback vision models — only active Groq vision-capable models.
-  // llama-3.2-90b-vision-preview: decommissioned Sep 2025.
-  // meta-llama/llama-4-scout-17b-16e-instruct: not available on this API key tier.
-  const candidateModels = [
-    primaryModel,
-    "qwen/qwen3.8-27b",
-    "llama-3.2-11b-vision-preview",
-    "llama-3.2-90b-vision-preview",
-  ].filter((m, i, arr) => arr.indexOf(m) === i);
+  const primaryModel = env.GROQ_MODEL_FOR_IMAGE || "qwen/qwen3.8-27b";
+  // Vision-capable models currently supported by Groq (per Groq vision docs):
+  // qwen/qwen3.6-27b + qwen/qwen3.8-27b. Retired and NOT retried:
+  // llama-3.2-11b/90b-vision-preview (shutdown Apr 2025),
+  // meta-llama/llama-4-scout-17b-16e-instruct (shutdown Jul 2026, free/dev tiers).
+  const candidateModels = [primaryModel, "qwen/qwen3.6-27b", "qwen/qwen3.8-27b"].filter(
+    (m, i, arr) => arr.indexOf(m) === i,
+  );
 
   const startTime = Date.now();
   const controller = new AbortController();
@@ -711,7 +709,10 @@ export async function analyzeFoodPhoto(
               choices?: Array<{ message?: { content?: string } }>;
             };
             rawResponseText = data.choices?.[0]?.message?.content ?? "";
-            console.log(`\n[aiService] === RAW AI RESPONSE (model: ${model}) ===\n${rawResponseText}\n[aiService] ========================================\n`);
+            // Metadata-only: never dump the full model payload into normal logs.
+            console.debug(
+              `[aiService] Vision response received (model: ${model}, chars: ${rawResponseText.length})`,
+            );
             if (rawResponseText.trim()) {
               successfulModel = model;
               break;

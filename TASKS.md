@@ -331,4 +331,14 @@ integration gates (Section 6).
   5. **Verification & Testing:**
      - Backend: 12 new automated unit/integration tests in `backend/tests/foodPhotoNutrition.test.ts` (all 24 test files / 216 tests passing, 0 ESLint warnings, TypeScript build clean).
      - Frontend: 4 new automated component/page tests in `frontend/tests/photoAnalyzer.test.tsx` (all 6 test files / 27 tests passing, 0 ESLint warnings, Next.js build clean with 18 prerendered routes).
-
+- `[2026-09-16] [Lead]` **Photo Nutrition follow-ups — 10–15 MB uploads, 60s vision timeout, generator prefill:**
+  1. **Body limit (#1):** `backend/src/server.ts` mounts `express.json({ limit: "15mb" })` for `/api/v1/ai/nutrition/analyze-photo` ahead of the 1 MB global default (10 MB binary ≈ 13.7 MB base64 JSON); `imageService.validateImageInput` raised 5 MB → 10 MB with updated message.
+  2. **Client compression (#1):** `photo-dropzone.tsx` accepts up to 15 MB, auto-compresses 10–15 MB photos via canvas (capped 2048px, JPEG quality ladder → 9 MB target) with compressing state; GIFs >10 MB rejected with guidance. Analyzer page aborts at 70s with timeout message and notes analysis may take ~60s.
+  3. **AI timeout (#1):** `AI_REQUEST_TIMEOUT_MS` default + `.env.example` 30000 → 60000; `docs/API_CONTRACT.md` failure line updated to ≤60s.
+  4. **Generator prefill (#2):** `nutrition-breakdown-view` CTA already linked `/generator?ingredients=…`; `generator/page.tsx` now parses it via exported `parsePrefilledIngredients` (trim/dedupe/cap 20, render-time `useState` initializer — React-Compiler safe) into the `TagInput`, shows a dismissible success Alert, wrapped in `Suspense` for `useSearchParams` prerender.
+  5. **Verification:** backend build ✓, lint 0 warnings ✓, 24 files / 217 tests ✓ (updated 10 MB boundary tests); frontend lint ✓, build ✓ (18 routes), 6 files / 29 tests ✓ (+2 prefill tests).
+- `[2026-09-16] [Lead]` **Photo Nutrition cleanup — live vision fallbacks, quiet success logs:**
+  1. **Fallback models:** `analyzeFoodPhoto` candidate list was `[primary, qwen3.8-27b?, llama-3.2-11b/90b-vision-preview]` — both llama previews shut down Apr 2025, and `llama-4-scout` (the old comment's alternative) shut down Jul 2026 on free/dev tiers. Verified against Groq vision docs: only `qwen/qwen3.6-27b` + `qwen/qwen3.8-27b` are currently vision-capable (so `qwen3.8` was never a typo — it's the live successor). List is now `[primary, qwen/qwen3.6-27b, qwen/qwen3.8-27b]` deduped; retry loop, timeout, Zod + telemetry behavior unchanged.
+  2. **Verbose log:** removed the success-path `console.log` dumping the entire raw model payload; replaced with metadata-only `console.debug` (model + char count). Error-path diagnostics (`console.error` on provider failure / validation failure) intentionally kept.
+  3. **Regression test:** +1 test in `foodPhotoNutrition.test.ts` — primary rejection falls back to a *different* model, every attempted model matches `qwen/qwen3.[68]-27b`, and no debug call leaks the payload.
+  4. **Verification:** backend build ✓, lint 0 warnings ✓, full suite 24 files / 218 tests ✓.
