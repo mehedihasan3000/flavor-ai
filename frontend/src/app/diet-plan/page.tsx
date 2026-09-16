@@ -57,7 +57,7 @@ function validateField(name: keyof FieldErrors, raw: string): string | undefined
 }
 
 export default function DietPlanPage() {
-  const { token, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [age, setAge] = useState("");
   const [weightKg, setWeightKg] = useState("");
@@ -73,9 +73,8 @@ export default function DietPlanPage() {
 
   // Best-effort prefill of the optional dietary preference from the profile.
   useEffect(() => {
-    if (authLoading) return;
-    if (!token) return;
-    getMyProfile({ token })
+    if (authLoading || !isAuthenticated) return;
+    getMyProfile()
       .then((profile) => {
         const first = profile.preferences?.dietaryLabels?.[0];
         if (first) setDietaryPreference(first);
@@ -83,7 +82,7 @@ export default function DietPlanPage() {
       .catch(() => {
         // Silent — the select simply stays on "No preference".
       });
-  }, [authLoading, token]);
+  }, [authLoading, isAuthenticated]);
 
   const handleCalculate = () => {
     const errors: FieldErrors = {
@@ -108,7 +107,7 @@ export default function DietPlanPage() {
     };
 
     setCalculating(true);
-    getDietPlan(input, token ? { token } : {})
+    getDietPlan(input)
       .then((result) => {
         setPlan(result);
         setCalculating(false);

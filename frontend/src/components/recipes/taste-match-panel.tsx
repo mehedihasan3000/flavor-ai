@@ -34,7 +34,7 @@ const SKELETON_COUNT = 3;
  * existing category/ingredient filters on /recipes.
  */
 export function TasteMatchPanel() {
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [selectedTastes, setSelectedTastes] = useState<TasteProfile[]>([]);
   const [intensity, setIntensity] = useState<TasteIntensity | "">("");
   const [notes, setNotes] = useState("");
@@ -64,7 +64,6 @@ export function TasteMatchPanel() {
           notes: notes.trim() || undefined,
           limit: RESULTS_LIMIT,
         },
-        { token },
       );
       setResults(matches);
     } catch (err) {

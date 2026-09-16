@@ -215,7 +215,7 @@ export function RecipeForm({
   mode,
   serverErrors,
 }: RecipeFormProps) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [form, setForm] = useState<RecipeFormData>(() => initFormData(initialData));
   const [errors, setErrors] = useState<RecipeFormErrors>({});
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -262,7 +262,7 @@ export function RecipeForm({
       setImageUploadError("Image must be under 5 MB.");
       return;
     }
-    if (!token) {
+    if (!isAuthenticated) {
       setImageUploadError("Please sign in to upload images.");
       return;
     }
@@ -273,7 +273,7 @@ export function RecipeForm({
       reader.onload = async (ev) => {
         const base64 = ev.target?.result as string;
         try {
-          const result = await uploadImage(base64, file.type, file.name, { token });
+          const result = await uploadImage(base64, file.type, file.name);
           setField("imageUrl", result.url);
         } catch (err) {
           if (err instanceof ApiError) setImageUploadError(err.message);

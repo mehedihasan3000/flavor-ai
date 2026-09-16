@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bookmark, ChevronLeft, ChevronRight, TrashBin } from "@gravity-ui/icons";
-import { useAuth } from "@/lib/auth-context";
 import { AuthGuard } from "@/components/auth";
 import { ApiError, listFavorites, removeFavorite } from "@/lib/api";
 import type { FavoriteItem, PaginatedResult } from "@/lib/types";
@@ -15,7 +14,6 @@ const PAGE_SIZE = 12;
 const SKELETON_COUNT = 6;
 
 function FavoritesContent() {
-  const { token } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -35,7 +33,7 @@ function FavoritesContent() {
           setIsLoading(true);
           setError(null);
         })
-        .then(() => listFavorites({ page, limit: PAGE_SIZE }, { token, signal }))
+        .then(() => listFavorites({ page, limit: PAGE_SIZE }, { signal }))
         .then((data) => {
           setResult(data);
           setIsLoading(false);
@@ -46,7 +44,7 @@ function FavoritesContent() {
           setIsLoading(false);
         });
     },
-    [page, token],
+    [page],
   );
 
   useEffect(() => {
@@ -65,7 +63,7 @@ function FavoritesContent() {
 
   const handleRemove = (recipeId: string) => {
     setRemovingId(recipeId);
-    removeFavorite(recipeId, { token })
+    removeFavorite(recipeId)
       .then(() => {
         setResult((prev) =>
           prev

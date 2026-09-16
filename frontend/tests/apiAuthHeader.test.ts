@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMyProfile, listRecipes } from "@/lib/api";
 
-const AUTH_STORAGE_KEY = "flavorai_auth_token";
-
 function stubFetch(body: unknown = {}, status = 200) {
   const fetchMock = vi.fn().mockResolvedValue(
     new Response(JSON.stringify(body), {
@@ -16,56 +14,56 @@ function stubFetch(body: unknown = {}, status = 200) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  window.localStorage.clear();
 });
 
-describe("api client automatic auth header", () => {
-  it("attaches the persisted session token when no explicit token is passed", async () => {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, "session-token-123");
+describe("api client cookie-based authentication", () => {
+  it("routes requests through the /api/proxy endpoint with credentials: same-origin", async () => {
+    const fetchMock = stubFetch({ preferences: null });
+
+    await getMyProfile();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/proxy/users/me");
+    expect(init.credentials).toBe("same-origin");
+  });
+
+  it("sends no Authorization header client-side when no explicit token is passed (cookie handled by proxy)", async () => {
     const fetchMock = stubFetch({ preferences: null });
 
     await getMyProfile();
 
     const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer session-token-123");
+    expect(headers.Authorization).toBeUndefined();
   });
 
-  it("attaches the token on authenticated mutations (createRecipe path)", async () => {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, "session-token-456");
-    const fetchMock = stubFetch({ recipe: {} });
-
-    await listRecipes({ mine: true });
-
-    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer session-token-456");
-  });
-
-  it("sends no Authorization header for guests", async () => {
+  it("sends no Authorization header for listRecipes without explicit token", async () => {
     const fetchMock = stubFetch({ items: [], total: 0, page: 1, limit: 20, totalPages: 0 });
 
     await listRecipes();
 
-    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/api/proxy/recipes");
+    expect(init.credentials).toBe("same-origin");
+    const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBeUndefined();
   });
 
-  it("explicit null token suppresses the persisted token", async () => {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, "session-token-789");
+  it("attaches explicit Authorization header when token is explicitly passed (for SSR/server components)", async () => {
+    const fetchMock = stubFetch({ preferences: null });
+
+    await getMyProfile({ token: "ssr-token-xyz" });
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer ssr-token-xyz");
+  });
+
+  it("suppresses Authorization header when token is explicitly null", async () => {
     const fetchMock = stubFetch({ items: [], total: 0, page: 1, limit: 20, totalPages: 0 });
 
     await listRecipes({}, { token: null });
 
     const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
     expect(headers.Authorization).toBeUndefined();
-  });
-
-  it("explicit token overrides the persisted one", async () => {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, "stored-token");
-    const fetchMock = stubFetch({ averageRating: 0, ratingCount: 0 });
-
-    await getMyProfile({ token: "override-token" });
-
-    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer override-token");
   });
 });

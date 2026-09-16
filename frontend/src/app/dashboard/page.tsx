@@ -12,7 +12,6 @@ import {
   Sparkles,
   Star,
 } from "@gravity-ui/icons";
-import { useAuth } from "@/lib/auth-context";
 import { AuthGuard } from "@/components/auth";
 import { ApiError, getMyStats, listRecipes } from "@/lib/api";
 import type { DashboardStats, PaginatedResult, Recipe, RecipeStatus } from "@/lib/types";
@@ -43,7 +42,6 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
 }
 
 function DashboardContent() {
-  const { token } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -70,8 +68,8 @@ function DashboardContent() {
         })
         .then(() =>
           Promise.allSettled([
-            getMyStats({ token, signal }),
-            listRecipes({ mine: true, status: status || undefined, page, limit: PAGE_SIZE }, { token, signal }),
+            getMyStats({ signal }),
+            listRecipes({ mine: true, status: status || undefined, page, limit: PAGE_SIZE }, { signal }),
           ]),
         )
         .then(([statsResult, recipesResult]) => {
@@ -92,7 +90,7 @@ function DashboardContent() {
           }
         });
     },
-    [status, page, token],
+    [status, page],
   );
 
   useEffect(() => {
