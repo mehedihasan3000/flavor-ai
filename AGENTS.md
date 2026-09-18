@@ -1,141 +1,56 @@
 # FlavorAI — Project Rules
 
-FlavorAI is a smart recipe generator & food-sharing platform (Next.js frontend +
-Express API). Source of truth: `FlavorAI - SRS.md` (requirements),
-`IMPLEMENTATION_PLAN.md` (architecture), `docs/API_CONTRACT.md` (frozen API
-shapes), `TASKS.md` (living roadmap — tick boxes as work completes).
+Smart recipe generator & food-sharing platform: Next.js 16 App Router frontend + Express 4 REST API. Sources of truth: `FlavorAI - SRS.md`, `IMPLEMENTATION_PLAN.md`, `docs/API_CONTRACT.md` (frozen shapes), `TASKS.md` (living roadmap — MVP released; post-MVP `/assistant`, `/diet`, taste-match, photo-nutrition already landed).
 
-## Repo Layout
+## Layout (two independent packages, no root build)
 
-Monorepo, **two independent packages** (no shared workspace build, no root
-`package.json`). Run commands from the package dir.
+- `frontend/` — routes `src/app`, UI primitives `src/components/ui` (barrel `index.ts`), typed client `src/lib/{api,types}.ts`, auth `src/lib/auth-context.tsx` + `src/lib/jwt.ts`.
+- `backend/` — entry `src/index.ts` → `src/server.ts` (`createApp`) → `src/routes/v1.ts` root router. Handlers `src/controllers`, logic `src/services` (`aiService`, `imageService`), Zod truth `src/types/index.ts`, tests `tests/` (~28 suites).
 
-- `frontend/` — Next.js App Router, TS strict, Tailwind v4 CSS-first (`@theme`
-  tokens in `src/app/globals.css`), **React Compiler enabled**, `@gravity-ui/icons`.
-  Routes in `src/app`, UI primitives in `src/components/ui` (barrel `index.ts`),
-  typed API client in `src/lib/{api,types}.ts`.
-- `backend/` — Express 4 REST API, TS strict, ESM/NodeNext, Mongoose, Zod, JWT.
-  Routers mount in `src/routes/v1.ts`; handlers in `src/controllers`, logic in
-  `src/services` (`aiService`, `imageService`); tests in `tests/`.
+## Commands (run from package dir)
 
-## Commands
+Backend (`backend/`): `npm run dev` (tsx watch) · `npm run build` (`tsc`, strict) · `npm run lint` (0 warnings, `--max-warnings=0`) · `npm test` (vitest run) · `npx vitest run tests/<file>.test.ts` (single file) · `npm run seed` (demo admin/user/recipes, needs live DB + `.env`) · `npm run db:indexes` (`scripts/syncIndexes.ts` — required before prod deploy, `autoIndex` off in production).
+Frontend (`frontend/`): `npm run dev` (:3000) · `npm run build` · `npm run lint` · `npm test` (`vitest run --config vitest.config.mjs`).
+Order: `build` → `lint` → `test`. No CI workflows; no `opencode.json`.
 
-Backend (`backend/`):
+## Setup
 
-- `npm run dev` — tsx watch, loads `.env`
-- `npm run build` — `tsc` (strict)
-- `npm run lint` — ESLint, **0 warnings required** (`--max-warnings=0`)
-- `npm test` — Vitest (unit + supertest), tests in `backend/tests/`
-- `npm run format` / `format:check` — Prettier
+- `backend/.env` (from `.env.example`) required for `dev`/`build`/`seed`/prod — `env.ts` exits(1) on invalid env. **Exception:** `npm test` works without `.env` (test fallback `MONGODB_URI`/`JWT_SECRET` when `NODE_ENV=test` or `VITEST=true`).
+- Node `>=20`. NodeNext ESM: relative imports **need `.js` extension** (`./config/env.js`) or build breaks.
+- Ports: API `:4000` (`/api/v1`, health `GET /api/v1/health`), app `:3000`. `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api/v1`) via `frontend/.env.local`. `JWT_SECRET` (≥16 chars) **must match** backend↔frontend or the auth bridge 401s.
 
-Frontend (`frontend/`): `npm run dev`, `npm run build`, `npm run lint`.
+## API contract (FROZEN — needs Lead sign-off to change)
 
-Verification order that matters: `npm run build` → `npm run lint` → `npm test`.
-For a single test file: `npx vitest run tests/types.test.ts`.
+- Triple-sync: `backend/src/types/index.ts` (executable truth) ↔ `docs/API_CONTRACT.md` ↔ `frontend/src/lib/types.ts`.
+- Error envelope on all non-2xx: `{ status, code, safeMessage, validation? }`. Codes: `VALIDATION_ERROR|UNAUTHORIZED|FORBIDDEN|NOT_FOUND|CONFLICT|AI_PROVIDER_ERROR|RATE_LIMITED|INTERNAL_ERROR`. `ZodError`→400, `ApiError`→its status, E11000→409.
+- Publish flow is **POST** `/recipes/:id/publish` and **POST** `/:id/unpublish` (not PATCH). Beyond frozen M1–M5 routes, these additive endpoints exist: `POST /ai/recipes/taste-match`, `POST /ai/nutrition/analyze-photo` (15 MB JSON body — see below), `GET /users/me/stats`, `GET /recipes?mine=true&status=`, `GET /favorites/:recipeId`, `GET /recipes/:id/ratings` (adds `myRating` when authed), comment `authorName`/`authorAvatarUrl` fields, `POST /assistant/{chat|recommendations|pantry-suggestions|macro-adjustments}`, `POST /diet/plan` (pure calc, nothing stored).
 
-## Setup Gotchas
+## Backend gotchas
 
-- **`backend/.env` is required before ANY backend command** (incl. `npm test`).
-  `src/config/env.ts` validates env with Zod and calls `process.exit(1)` at import
-  time if anything is missing/invalid — so a fresh clone with no `.env` hard-crashes.
-  Copy `backend/.env.example` → `.env`. `.env` is gitignored; never commit or log it.
-- Node `>=20`. NodeNext ESM: **relative imports need a `.js` extension**
-  (e.g. `import { env } from "./config/env.js"`). Dropping it breaks `npm run build`.
-- Frontend: `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api/v1`) via
-  `frontend/.env.local`.
+- `Recipe.totalTimeMinutes` computes only in `pre("save")` — recompute manually on updates (`recipeController` line ~182 pattern). Rating/favorite/comment mutations must call their `recompute*` fns (`recomputeRatingAggregates`, `recomputeFavoriteCount`, `recomputeCommentCount` — also reused by admin moderation).
+- `Model.aggregate()` **bypasses Mongoose auto-casting**: cast ids explicitly (`new Types.ObjectId(recipeId)`) in `$match`, unlike `find`/`countDocuments`.
+- `authenticate()` looks users up by **`providerId`** (external auth subject), not `_id` — test helpers must set `providerId` and sign `sub` as that value, else authed requests silently 401.
+- Middleware order in `server.ts` matters: photo route's `express.json({limit:"15mb"})` mounts **before** the global `1mb` parser; `sanitizeMongoOperators` (strips `$`/dotted keys, NoSQL defense) runs after parsing, before routes. Comment bodies additionally stripped of HTML via `utils/sanitize.ts` before length check.
+- Rate limits (all envelope `429 RATE_LIMITED`): base 300/15min app-wide; `authLimiter` 50/15min; `aiRateLimiter` + `uploadRateLimiter` 10/15min; `commentLimiter` 20/10min on comment POST/PATCH/DELETE only (runs before auth). GET reads use base limiter.
+- Admin `PATCH /admin/recipes/:id` accepts only `published|hidden` (draft lifecycle stays owner-side). `GET /favorites` filters to published in-pipeline via `$lookup` (rows kept, reappear on republish). DELETE favorite is intentionally ungated by recipe status.
 
-## Architecture Notes
+## Frontend gotchas (each broke a real build)
 
-- **The API contract is FROZEN.** `backend/src/types/index.ts` is the executable
-  source of truth (Zod schemas + enums + DTOs); `docs/API_CONTRACT.md` mirrors it,
-  and `frontend/src/lib/types.ts` mirrors both. Do NOT change shapes without Team
-  Lead sign-off — keep all three in sync when a change is approved.
-- All six domains are implemented (M1–M5 merged through M4): auth/user/recipe/AI/
-  ratings/comments/favorites/admin/upload controllers + routers under
-  `routes/v1.ts`, plus middleware `auth.ts` (JWT bridge), `validate.ts` (Zod),
-  `sanitizeInput.ts`, `rateLimit.ts` / `rateLimiters.ts`. Remaining repo work is
-  integration/testing/deployment — check TASKS.md for live status.
-- Every response must use the error envelope `{ status, code, safeMessage, validation? }`.
-  `src/middleware/errorHandler.ts` maps `ZodError` → 400, `ApiError` → its status, and
-  Mongoose duplicate-key (E11000) → 409 `CONFLICT`.
-- `Recipe.totalTimeMinutes` is computed in a `pre("save")` hook only — not on
-  `findOneAndUpdate`. Recompute in services when editing recipes.
-- Indexes already on models: unique email + sparse unique providerId (User), unique
-  slug + text index on `title/summary/ingredients.name` + status/publishedAt +
-  owner/createdAt (Recipe), unique `(recipe,user)` compound (Rating, Favorite),
-  recipe+createdAt (Comment), user+createdAt (AIGenerationLog).
-- `autoIndex` is disabled in production (`config/db.ts`) — deploy step must create
-  indexes (e.g. `syncIndexes()`) before release.
+- React Compiler + `react-hooks` v7: **no setState synchronously reachable from effect bodies** (even via helpers). Fetch-on-mount sets state only inside `.then/.catch` callbacks.
+- RSC boundary: don't export plain functions/styles from `"use client"` files for server components — server-safe helpers live in own modules (e.g. `ui/button-styles.ts`).
+- `next.config.ts` pins `turbopack.root` — do not remove (else stray nested `frontend/frontend/.next` junk; safe to delete when no node process holds it; eslint ignores `**/.next/**`).
+- `PATCH /users/me` must send the **FULL** `DietaryPreferences` object — omitted arrays reset to `[]`.
+- `lib/api.ts` auto-attaches `localStorage["flavorai_auth_token"]` as Bearer; pass `token: null` to force a guest request. `ApiError.message` is the envelope's safe text — never surface raw/provider errors. `cache: "no-store"` on all requests.
+- Gravity icons have non-obvious names (`Xmark`, `Person`, `House`, `TriangleExclamation` — no `X`/`User`/`Home`). Check exports before importing. Icons never carry meaning alone; small text on solid orange/green fills uses `-strong`/`-deep` tokens for AA contrast.
 
-## Frontend Gotchas (each one broke a real build)
+## Domain / auth / AI rules (enforce in backend, never UI-only)
 
-- **React Compiler + react-hooks v7 forbid setState synchronously reachable from
-  effect bodies** (even via called helper functions). For fetch-on-mount, set state
-  inside promise callbacks (`.then/.catch`), never via an async wrapper called from
-  the effect body. Lint fails the build otherwise.
-- **RSC boundary:** plain functions/styles cannot be exported from `"use client"`
-  files and used by server components. Server-safe style helpers live in their own
-  module (e.g. `ui/button-styles.ts`), not inside client component files.
-- `next.config.ts` pins `turbopack.root` — do not remove. Without it Next.js
-  mis-infers the workspace root and scatters `.next` caches (e.g. a stray nested
-  `frontend/frontend/.next`). Such dirs are generated junk: safe to delete once no
-  node process holds them; eslint ignores `**/.next/**` at any depth.
-- Contract nuance: profile/preferences PATCH must send the **FULL**
-  `DietaryPreferences` object — omitted arrays reset to `[]` server-side.
-- Client `ApiError` (`lib/api.ts`) exposes the envelope's safe text as `.message`;
-  never surface raw network/provider errors in UI.
-- Gravity icons: import names are non-obvious (`Xmark`, `Person`, `House`,
-  `TriangleExclamation` — no `X`/`User`/`Home` aliases). Check the package exports
-  before importing.
-- Accessibility AA convention: small text sitting on solid orange/green fills uses
-  `-strong`/`-deep` token variants; pure `primary`/`secondary` are reserved for
-  large text and accents. Icons never carry meaning alone (visible text or
-  accessible name required).
+Owner-or-admin edits/unpublishes/deletes recipes; drafts owner+admin only; public discovery = published non-hidden only. Ratings int 1–5, one per user (re-rate updates), owner can't rate own. Favorites unique per user. Allergen/dietary compliance never guaranteed — warnings mandatory (AI + nutrition + recipe views). Never leak private profiles/drafts/favorites/tokens. Moderated content stays unsearchable.
+Auth: Better Auth client session → server-minted HS256 Bearer JWT (`iss`/`aud`/15m expiry per contract); `middleware/auth.ts` verifies → `req.user`; secrets never in browser JS.
+AI: Groq models via env (`GROQ_MODEL`, `GROQ_MODEL_FOR_IMAGE`); **Zod-validate ALL AI output server-side, never store invalid**; discard hallucinated `recipeId`s outside the candidate pool (taste-match/assistant); provider failure/timeout (default 60s) → safe retryable 502/504, never leak internals.
 
-## Domain Rules (must enforce in backend)
+## Workflow
 
-1. Only authenticated users generate/save/publish/rate/comment/favorite.
-2. Only recipe owner or admin edits/unpublishes/deletes a recipe — enforce in
-   backend, never just by hiding UI (FR-RECIPE-06).
-3. Drafts visible only to owner + admins; only published, non-hidden recipes in
-   public discovery.
-4. Ratings: integer 1–5, one active per user per recipe, re-rate updates (never
-   duplicates), owner cannot rate own.
-5. Favorites: unique per user per recipe.
-6. Allergen/dietary compliance is never guaranteed by AI output — warnings mandatory.
-7. Never expose another user's private profile, drafts, favorites, or tokens.
-8. Moderated/deleted content must not remain publicly searchable.
-
-## Auth Bridge (CRITICAL)
-
-Better Auth handles client auth/session; the Express API receives signed Bearer
-JWTs. `middleware/auth.ts` verifies signature → `req.user`, rejecting
-expired/malformed/unauthorized tokens. Secrets never reach browser JS; prefer
-secure, HTTP-only, SameSite cookies. Passwords (if used) hashed, never returned.
-Issuer/audience/expiry/refresh/logout policy per SRS §9.4.
-
-## AI Rules
-
-- Groq models `openai/gpt-oss-120b` / `qwen/qwen3.6-27b`. Constrained prompts
-  enforcing strict JSON; **server-side Zod-validate ALL AI output — invalid output
-  must NOT be stored** (FR-AI-07). On provider failure/timeout return a safe,
-  retryable error, never leak internals (FR-AI-08). Timeout ≤30s. Pantry matching:
-  `usedIngredients` vs `missingIngredients`. Respect dietary + allergy constraints.
-
-## Team Workflow with opencode
-
-5 members, parallel workstreams owned per TASKS.md; API shapes in
-`docs/API_CONTRACT.md`. Members work on `feature/<name>` branches off `develop`;
-Lead merges in order **M1 → M2/M3/M4 → M5**. When prompted, expect the member to
-state their workstream, target files, constraints, and a verification command.
-End every task by ticking TASKS.md and logging a dated `[YYYY-MM-DD] [M#]` note.
-Commit style (match history): conventional commits scoped by workstream, e.g.
-`feat(m5): …`, `chore(backend): …`.
-
-## Workflow Rules
-
-- Update TASKS.md (living roadmap) when you complete work; log dated notes.
-- Do not commit unless explicitly asked.
+- Do not commit unless explicitly asked. Commit style: conventional + workstream scope (`feat(m5): …`, `chore(backend): …`); branches `feature/<name>` off `develop`.
+- Tick `TASKS.md` only when done per Definition of Done; append dated `[YYYY-MM-DD] [M#]` note. Keep the contract triple in sync on any approved change.
 - After saving any opencode config change, remind the user to restart opencode.
-- Keep `backend/src/types/index.ts`, `docs/API_CONTRACT.md`, and
-  `frontend/src/lib/types.ts` in sync.

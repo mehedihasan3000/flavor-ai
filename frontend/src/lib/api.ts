@@ -242,9 +242,10 @@ export function listRecipes(
 export async function generateAIRecipe(
   input: AIRecipePromptInput,
   options: RequestOptions = {},
-): Promise<AIRecipeOutput> {
-  // Backend wraps the output: { recipe, pantryMatch } — unwrap for callers
-  const res = await request<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }>(
+): Promise<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }> {
+  // Backend returns { recipe, pantryMatch } — return both so the generator can
+  // render the pantry summary (used/missing counts) alongside the recipe.
+  return request<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }>(
     "/ai/recipes/generate",
     {
       ...options,
@@ -252,7 +253,6 @@ export async function generateAIRecipe(
       body: input,
     },
   );
-  return res.recipe;
 }
 
 export async function suggestFlavorPairings(

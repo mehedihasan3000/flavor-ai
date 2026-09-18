@@ -130,6 +130,54 @@ describe("POST /recipes (FR-RECIPE-01)", () => {
   });
 });
 
+describe("POST /recipes duplicate-content protection (ERROR.md)", () => {
+  it("rejects re-saving the identical dish with 409 and keeps a single record", async () => {
+    const user = await createUser("Ada", "ada@example.com");
+    const first = await createDraft(user.token);
+    expect(first.status).toBe(201);
+
+    // Same dish, fresh timestamped slug — exactly what a second Save/Publish
+    // click sends — must not mint a second record.
+    const retry = await request(app)
+      .post("/api/v1/recipes")
+      .set("Authorization", `Bearer ${user.token}`)
+      .send({ ...validRecipeBody, slug: "garlic-spinach-chicken-9876" });
+
+    expect(retry.status).toBe(409);
+    expect(retry.body.code).toBe("CONFLICT");
+    expect(await RecipeModel.countDocuments({ owner: first.body.recipe.owner })).toBe(1);
+  });
+
+  it("allows the same title with different content", async () => {
+    const user = await createUser("Ada", "ada@example.com");
+    await createDraft(user.token);
+
+    const res = await request(app)
+      .post("/api/v1/recipes")
+      .set("Authorization", `Bearer ${user.token}`)
+      .send({
+        ...validRecipeBody,
+        slug: "garlic-spinach-chicken-v2",
+        ingredients: [{ name: "tofu", quantity: 1, unit: "block" }],
+      });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("allows identical content from a different owner", async () => {
+    const userA = await createUser("Ada", "ada@example.com");
+    const userB = await createUser("Bob", "bob@example.com");
+    await createDraft(userA.token);
+
+    const res = await request(app)
+      .post("/api/v1/recipes")
+      .set("Authorization", `Bearer ${userB.token}`)
+      .send({ ...validRecipeBody, slug: "garlic-spinach-chicken-bob" });
+
+    expect(res.status).toBe(201);
+  });
+});
+
 describe("GET /recipes/:id visibility (Business Rules 3/4/10)", () => {
   it("returns a published recipe to guests", async () => {
     const owner = await createUser("Ada", "ada@example.com");
