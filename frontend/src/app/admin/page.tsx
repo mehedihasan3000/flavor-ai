@@ -43,7 +43,7 @@ function AdminContent() {
           Admin moderation
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Hide or restore recipes, moderate comments, and review registered users (FR-ADMIN-01..04).
+          Hide or restore recipes, moderate comments, and review registered users.
         </p>
       </div>
 
