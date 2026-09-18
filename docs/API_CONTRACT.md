@@ -189,11 +189,22 @@ contract had no endpoint.
   "nutrition": { "caloriesPerServing": 420, "proteinGramsPerServing": 40, "carbsGramsPerServing": 12, "fatGramsPerServing": 22 }
 }
 ```
-→ 201 `{ recipe }`. `status` defaults to `draft`.
+→ 201 `{ recipe }`. `status` defaults to `draft`. Re-submitting the same dish
+(same owner + title + ingredients + steps — e.g. double-clicking Save/Publish on
+one generated output, retrying, or replaying the request) → 409 `CONFLICT`
+(`"This recipe has already been saved."`) instead of a second record. The check
+ignores `slug` (the generator mints a fresh timestamped slug per attempt) and
+cosmetic `pantryMatch` tags.
+
+**Additive (post-freeze):** `POST /recipes` accepts optional `"source": "manual" | "ai"`
+(default `"manual"`). The AI generator passes `"source": "ai"` so saved AI recipes
+keep their "AI Generated" badge and AI/allergy disclaimers on the detail page;
+the manual form omits it. `source` is immutable — `PATCH /recipes/:id`
+(`UpdateRecipeInput`) does not accept it.
 
 **Recipe response** adds: `id`, `owner`, `source`, `status`, `totalTimeMinutes`,
 `averageRating`, `ratingCount`, `favoriteCount`, `commentCount`, `publishedAt`,
-`createdAt`, `updatedAt`. PATCH uses `UpdateRecipeInput` (all optional).
+`createdAt`, `updatedAt`. PATCH uses `UpdateRecipeInput` (all optional, never `source`).
 
 ---
 

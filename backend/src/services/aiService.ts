@@ -129,9 +129,10 @@ CRITICAL INSTRUCTIONS:
     "fiberGramsPerServing": number | null (optional),
     "sugarGramsPerServing": number | null (optional),
     "sodiumMgPerServing": number | null (optional)
-  } (optional, set values to null if unknown - NEVER fabricate accurate numbers)
+  } (REQUIRED — always include this object with your best APPROXIMATE estimates per serving, derived from typical values for the listed ingredients divided by the servings count. The UI labels these as estimates, never as lab-grade facts, so prefer a reasonable approximate number over null for calories/protein/carbs/fat. Use null for a field only if you genuinely cannot estimate it; fiber/sugar/sodium may be null if unknown.)
 }
-3. Strictly respect all allergies, dietary restrictions, and excluded ingredients. Never include prohibited ingredients!`;
+3. Strictly respect all allergies, dietary restrictions, and excluded ingredients. Never include prohibited ingredients!
+4. Nutrition values are APPROXIMATE estimates for guidance only (not medical advice) — estimate them, do not leave them all null.`;
 
   const ingredientList = input.ingredients
     .map((ing) => {

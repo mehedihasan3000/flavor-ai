@@ -537,11 +537,14 @@ export const CreateRecipeInput = z.object({
   dietaryLabels: z.array(z.enum(DIETARY_LABEL)).default([]),
   allergenWarnings: z.array(z.string()).default([]),
   nutrition: NutritionEstimate.optional(),
+  /** Additive: lets the AI generator persist `source: "ai"` so saved AI recipes keep their badge/disclaimers. Defaults to `"manual"`; omitted by the manual form. */
+  source: z.enum(RECIPE_SOURCE).optional().default("manual"),
 });
 
 export type CreateRecipeInput = z.infer<typeof CreateRecipeInput>;
 
-export const UpdateRecipeInput = CreateRecipeInput.partial();
+/** Source is set at creation and immutable afterwards — PATCH cannot flip manual<->ai. */
+export const UpdateRecipeInput = CreateRecipeInput.omit({ source: true }).partial();
 
 export type UpdateRecipeInput = z.infer<typeof UpdateRecipeInput>;
 

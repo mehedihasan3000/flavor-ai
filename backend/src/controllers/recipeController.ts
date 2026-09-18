@@ -114,9 +114,51 @@ function buildSort(sort: RecipeSearchQuery["sort"]): Record<string, 1 | -1> {
   }
 }
 
+interface FingerprintIngredient {
+  name?: unknown;
+  quantity?: unknown;
+  unit?: unknown;
+  notes?: unknown;
+}
+
+interface FingerprintStep {
+  stepNumber?: unknown;
+  instruction?: unknown;
+}
+
+/**
+ * Normalizes a recipe's substantive content (title is compared separately)
+ * into a stable string. Slug is deliberately excluded — the generator mints a
+ * fresh timestamped slug per attempt, so it can never identify a resubmission.
+ * Cosmetic `pantryMatch` tags are excluded as well; only cooking-relevant
+ * fields participate.
+ */
+function contentFingerprint(
+  ingredients: FingerprintIngredient[],
+  steps: FingerprintStep[],
+): string {
+  const normIngredients = (ingredients ?? []).map((ing) => ({
+    name: String(ing.name ?? "").trim().toLowerCase(),
+    quantity: typeof ing.quantity === "number" ? ing.quantity : null,
+    unit: String(ing.unit ?? "").trim().toLowerCase(),
+    notes: String(ing.notes ?? "").trim(),
+  }));
+  const normSteps = (steps ?? []).map((step) => ({
+    stepNumber: step.stepNumber,
+    instruction: String(step.instruction ?? "").trim(),
+  }));
+  return JSON.stringify({ ingredients: normIngredients, steps: normSteps });
+}
+
 /**
  * POST /recipes — create a manual recipe. Always saved as a draft owned by the
  * authenticated user (FR-RECIPE-01). Duplicate slug → 409 via error handler.
+ *
+ * Idempotency: re-submitting the same dish (double-click, retry, replayed
+ * request) must not mint a second record, so an identical owner + title +
+ * content combination is rejected with 409 CONFLICT. Candidates are scoped by
+ * owner + exact title (indexed) and bounded to the 10 most recent, so the
+ * extra read stays cheap.
  */
 export const createRecipe = asyncHandler(async (req: Request, res: Response) => {
   const user = req.user;
@@ -125,10 +167,27 @@ export const createRecipe = asyncHandler(async (req: Request, res: Response) => 
   }
 
   const input = req.body as CreateRecipeInput;
+
+  const incomingFingerprint = contentFingerprint(input.ingredients, input.steps);
+  const candidates = await RecipeModel.find(
+    { owner: user.id, title: input.title },
+    { ingredients: 1, steps: 1 },
+  )
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .lean()
+    .exec();
+  const alreadySaved = candidates.some(
+    (doc) => contentFingerprint(doc.ingredients ?? [], doc.steps ?? []) === incomingFingerprint,
+  );
+  if (alreadySaved) {
+    throw new ApiError(409, "CONFLICT", "This recipe has already been saved.");
+  }
+
   const recipe = await RecipeModel.create({
     ...input,
     owner: user.id,
-    source: "manual",
+    source: input.source ?? "manual",
     status: "draft",
   });
 

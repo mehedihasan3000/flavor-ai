@@ -241,9 +241,11 @@ export interface CreateRecipeInput {
   dietaryLabels?: DietaryLabel[];
   allergenWarnings?: string[];
   nutrition?: NutritionEstimate;
+  /** Additive: generator passes `"ai"` so saved AI recipes keep their badge; omitted → backend defaults to `"manual"`. */
+  source?: RecipeSource;
 }
 
-export type UpdateRecipeInput = Partial<CreateRecipeInput>;
+export type UpdateRecipeInput = Partial<Omit<CreateRecipeInput, "source">>;
 
 export interface Recipe {
   id: string;
