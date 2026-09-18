@@ -90,20 +90,21 @@ export function AdminCommentsPanel() {
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
-        <Select
-          aria-label="Filter by moderation status"
-          value={moderationStatus}
-          onChange={(event) => {
-            setModerationStatus(event.target.value as CommentStatus | "");
-            setPage(1);
-          }}
-          className="sm:w-48"
-        >
-          <option value="">All comments</option>
-          <option value="visible">Visible</option>
-          <option value="moderated">Moderated</option>
-        </Select>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <div className="w-full sm:w-48 sm:shrink-0">
+          <Select
+            aria-label="Filter by moderation status"
+            value={moderationStatus}
+            onChange={(event) => {
+              setModerationStatus(event.target.value as CommentStatus | "");
+              setPage(1);
+            }}
+          >
+            <option value="">All comments</option>
+            <option value="visible">Visible</option>
+            <option value="moderated">Moderated</option>
+          </Select>
+        </div>
       </div>
 
       {actionError && <p className="mb-3 text-xs font-medium text-danger-strong">{actionError}</p>}

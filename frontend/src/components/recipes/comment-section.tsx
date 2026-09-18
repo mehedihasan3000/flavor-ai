@@ -120,12 +120,13 @@ export function CommentSection({ recipeId, onCountChange }: CommentSectionProps)
       .then((created) => {
         // Comments sort oldest-first, so a freshly posted comment belongs at
         // the end of whatever is currently loaded — no refetch needed.
+        // Keep the updater pure: notifying the parent inside setTotal's
+        // updater would update RecipeDetailPage mid-render (updaters rerun
+        // during render) and throw.
         setComments((prev) => [...prev, created]);
-        setTotal((t) => {
-          const next = t + 1;
-          onCountChange?.(next);
-          return next;
-        });
+        const next = total + 1;
+        setTotal(next);
+        onCountChange?.(next);
         setDraft("");
         setPosting(false);
       })
@@ -170,11 +171,10 @@ export function CommentSection({ recipeId, onCountChange }: CommentSectionProps)
     deleteComment(commentId, { token })
       .then(() => {
         setComments((prev) => prev.filter((c) => c.id !== commentId));
-        setTotal((t) => {
-          const next = Math.max(0, t - 1);
-          onCountChange?.(next);
-          return next;
-        });
+        // Keep the updater pure (see handlePost): notify the parent outside.
+        const next = Math.max(0, total - 1);
+        setTotal(next);
+        onCountChange?.(next);
         setDeletingId(null);
         setConfirmingDeleteId(null);
       })

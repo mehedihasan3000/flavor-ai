@@ -141,12 +141,29 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     [id, token, isAuthenticated],
   );
 
+  // Null-safe status for gating community features (ratings/favorites/
+  // comments APIs are published-only). The strict `isPublished` const below
+  // is defined after the loading early-returns instead.
+  const recipeStatus = recipe?.status ?? null;
+
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !recipeStatus) return;
+    if (recipeStatus !== "published") {
+      // Ratings/favorites/comments APIs are published-only by design
+      // (requirePublishedRecipe): reset instead of surfacing a misleading
+      // "Recipe not found" on draft/hidden recipes.
+      Promise.resolve().then(() => {
+        setRatingSummary(null);
+        setRatingError(null);
+        setRatingLoading(false);
+        setFavorited(false);
+      });
+      return;
+    }
     const controller = new AbortController();
     void loadCommunityState(controller.signal);
     return () => controller.abort();
-  }, [loadCommunityState, authLoading]);
+  }, [loadCommunityState, authLoading, recipeStatus]);
 
   const handleRate = (value: RatingValue) => {
     setRatingLoading(true);
@@ -429,26 +446,38 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
                 variant={favorited ? "primary" : "outline"}
                 size="sm"
                 loading={favoriteLoading}
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || !isPublished}
                 onClick={handleToggleFavorite}
-                title={isAuthenticated ? undefined : "Sign in to favorite this recipe"}
+                title={
+                  !isAuthenticated
+                    ? "Sign in to favorite this recipe"
+                    : recipe.status === "draft"
+                      ? "Publish this recipe to enable favorites"
+                      : recipe.status === "hidden"
+                        ? "Favorites are unavailable while this recipe is hidden"
+                        : undefined
+                }
               >
                 <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>
                   {favorited ? "Favorited" : "Favorite"} ({recipe.favoriteCount})
                 </span>
               </Button>
-              <a
-                href="#comments-heading"
-                className="text-neutral-600 underline-offset-2 hover:text-orange-700 hover:underline"
-              >
-                {commentCount ?? recipe.commentCount} comments
-              </a>
+              {isPublished ? (
+                <a
+                  href="#comments-heading"
+                  className="text-neutral-600 underline-offset-2 hover:text-orange-700 hover:underline"
+                >
+                  {commentCount ?? recipe.commentCount} comments
+                </a>
+              ) : (
+                <span className="text-neutral-500">{recipe.commentCount} comments</span>
+              )}
             </div>
           </div>
 
-          {/* Rate this recipe */}
-          {!isOwner && (
+          {/* Rate this recipe — ratings are published-only on the API */}
+          {!isOwner && isPublished && (
             <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               {isAuthenticated ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -482,6 +511,15 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
               {ratingError && (
                 <p className="mt-2 text-xs font-medium text-red-600">{ratingError}</p>
               )}
+            </div>
+          )}
+          {!isOwner && !isPublished && (
+            <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <p className="text-xs text-neutral-600">
+                {recipe.status === "draft"
+                  ? "Ratings open up once this recipe is published."
+                  : "Ratings are unavailable while this recipe is hidden."}
+              </p>
             </div>
           )}
 
@@ -800,10 +838,22 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
         </div>
       </div>
 
-      {/* Comments (FR-COMMENT-01..05) */}
-      <Card className="mt-8 p-6">
-        <CommentSection recipeId={recipe.id} onCountChange={setCommentCount} />
-      </Card>
+      {/* Comments (FR-COMMENT-01..05) — the comments API is published-only,
+          so draft/hidden recipes show an explanatory note instead of a 404. */}
+      {isPublished ? (
+        <Card className="mt-8 p-6">
+          <CommentSection recipeId={recipe.id} onCountChange={setCommentCount} />
+        </Card>
+      ) : (
+        <Card className="mt-8 p-6">
+          <h2 className="text-lg font-bold text-heading">Comments</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {recipe.status === "draft"
+              ? "This recipe is still a draft. Publish it to start the conversation."
+              : "This recipe is currently hidden, so comments are unavailable."}
+          </p>
+        </Card>
+      )}
     </main>
   );
 }
