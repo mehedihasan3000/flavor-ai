@@ -91,7 +91,7 @@ function Hero({ totalCount, topRecipes }: { totalCount: number; topRecipes: Reci
         <div className={containerClass}>
           <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8">
             {/* Left Column: Value proposition, Actions & Social Proof */}
-            <div className="flex flex-col items-start text-left lg:col-span-7">
+            <div className="flex flex-col items-start text-left lg:col-span-6">
               {/* Eyebrow Pill */}
               <HeroFadeIn delay={0}>
                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary-soft/90 px-3.5 py-1.5 text-xs font-semibold text-primary-strong shadow-2xs backdrop-blur-xs">

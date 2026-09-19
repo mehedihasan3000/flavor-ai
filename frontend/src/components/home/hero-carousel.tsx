@@ -74,7 +74,7 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
   const recipeTime = currentRecipe?.totalTimeMinutes ? `${currentRecipe.totalTimeMinutes} min` : "Quick & Easy";
 
   return (
-    <div className="relative flex justify-center lg:col-span-5 lg:justify-end w-full">
+    <div className="relative flex justify-center lg:col-span-6 lg:justify-end w-full">
       {/* Ambient background glow */}
       <div
         aria-hidden="true"
@@ -83,7 +83,7 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
 
       <HeroFloat delay={0} className="w-full flex justify-center lg:justify-end">
         <div
-          className="relative w-full max-w-md sm:max-w-lg lg:max-w-xl xl:max-w-2xl"
+          className="relative w-full max-w-lg sm:max-w-xl lg:max-w-2xl xl:max-w-3xl"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           aria-roledescription="carousel"
@@ -108,7 +108,7 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
               </div>
             )}
 
-            <div className="relative aspect-[4/3] w-full overflow-hidden sm:aspect-[16/11]">
+            <div className="relative aspect-square sm:aspect-[4/3] lg:aspect-[4/3] w-full overflow-hidden">
               <AnimatePresence mode="wait" initial={false}>
                 <m.div
                   key={currentRecipe?.id ?? activeIndex}
