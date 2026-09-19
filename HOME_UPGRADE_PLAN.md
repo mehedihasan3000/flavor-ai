@@ -92,7 +92,8 @@ Upgrade the FlavorAI Home Page (`/`) to provide a stunning, interactive, real-da
 ---
 
 ## Accessibility
-- FAQ accordion uses native `<button>` with `aria-expanded` and `aria-controls`.
+- FAQ accordion uses native `<button>` with `aria-expanded` and `ar
+ia-controls`.
 - Icon buttons have explicit `aria-label` attributes.
 - Visible focus rings (`focus-visible:outline...`) on all interactive elements.
 - Marquee is set to `aria-hidden="true"` and pauses on `:hover` or `:focus-within`.
@@ -101,14 +102,13 @@ Upgrade the FlavorAI Home Page (`/`) to provide a stunning, interactive, real-da
 ---
 
 ## Technical Investigation & Notes
-- **Hero Image Investigation**: Root cause must be **PROVEN** before fixing (verify `frontend/public/images/spicy-meat.jpg` asset status and Network response), not assumed. Ask before editing `next.config.ts`.
-- **Bundle Baseline**:
-  - `/` route First Load JS: (Pending `next build` report in Part B).
+- **Hero Image Investigation**: Proven root cause: `public/images/spicy-meat.jpg` exists locally (319 KB). Hardcoded hero image tag in `page.tsx` lacked fallback & dynamic image binding for top-rated community recipes. Resolved in Commit 2 with dynamic recipe binding and gradient fallback.
+- **Bundle Baseline**: Initial `/` route build output: Next.js 16 dynamic route (`ƒ /`), initial static JS bundle chunks ~551 KB uncompressed (~154 KB gzipped).
 
 ---
 
 ## Out-of-Scope
-- Backend, API contract, database queries, schemas.
+- Any backend edits, database queries, schema changes, or new API routes.
 - Editing `/generator`, `/recipes`, `/assistant`, `/nutrition-analyzer`, `/diet-plan`, `/admin`.
 - Modifying `Navbar` (`frontend/src/components/layout/navbar.tsx`).
 - Modifying UI primitives (`frontend/src/components/ui/*`).
@@ -126,7 +126,7 @@ Upgrade the FlavorAI Home Page (`/`) to provide a stunning, interactive, real-da
 
 - [x] **Commit 1**: `docs: add HOME_UPGRADE_PLAN.md` (goal, scope lock, page structure, dynamic vs static, real data, animation rules, a11y, DoD)
 - [x] **Commit 2**: `fix(frontend): fix hero image and replace fake stats with real data`
-- [ ] **Commit 3**: `chore(frontend): install motion, add MotionProvider and Reveal component`
+- [x] **Commit 3**: `chore(frontend): install motion, add MotionProvider and Reveal component`
 - [ ] **Commit 4**: `feat(frontend): hero stagger and floating animations`
 - [ ] **Commit 5**: `feat(frontend): add AI tools showcase and How it works animations`
 - [ ] **Commit 6**: `feat(frontend): add pantry quick input, ingredient marquee, generator prefill`
