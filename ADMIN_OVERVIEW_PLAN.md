@@ -127,7 +127,7 @@ Implement an **"Overview" tab** as the **first tab** on the existing `/admin` mo
 
 - [x] **Commit 1:** `docs: add ADMIN_OVERVIEW_PLAN.md`
 - [x] **Commit 2:** `feat(backend): add admin overview zod schemas and types`
-- [ ] **Commit 3:** `feat(backend): add overview service for KPI counts and AI health aggregations`
+- [x] **Commit 3:** `feat(backend): add overview service for KPI counts and AI health aggregations`
 - [ ] **Commit 4:** `feat(backend): add trends, top lists and activity feeds to overview service`
 - [ ] **Commit 5:** `feat(backend): add GET /admin/overview controller and route with requireAdmin, plus Vitest tests (auth 401/403, invalid range 400, happy path shape, zero-fill days)`
 - [ ] **Commit 6:** `docs: sync API_CONTRACT.md and frontend types for admin overview`
