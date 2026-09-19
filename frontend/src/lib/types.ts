@@ -571,3 +571,108 @@ export interface AdminCommentSearchQuery extends PaginationQuery {
 export interface AdminCommentModerationInput {
   moderationStatus: CommentStatus;
 }
+
+export type AdminOverviewRange = "7d" | "30d" | "90d";
+
+export interface AdminOverviewKpis {
+  totalUsers: number;
+  userRoles: {
+    user: number;
+    admin: number;
+  };
+  totalRecipes: number;
+  recipeStatus: {
+    published: number;
+    draft: number;
+    hidden: number;
+  };
+  recipeSource: {
+    ai: number;
+    manual: number;
+  };
+  pendingModeration: {
+    hiddenRecipes: number;
+    moderatedComments: number;
+    total: number;
+  };
+  totalComments: number;
+  totalFavorites: number;
+  platformAverageRating: number;
+  aiMetrics: {
+    total: number;
+    successRate: number;
+    averageLatencyMs: number;
+  };
+}
+
+export interface AdminOverviewTrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface AdminOverviewTrends {
+  userGrowth: AdminOverviewTrendPoint[];
+  recipeCreation: AdminOverviewTrendPoint[];
+}
+
+export interface AdminOverviewAiHealth {
+  success: number;
+  failed: number;
+  timeout: number;
+}
+
+export interface AdminOverviewTopRecipe {
+  id: string;
+  title: string;
+  averageRating: number;
+  favoriteCount: number;
+  status: RecipeStatus;
+}
+
+export interface AdminOverviewTopCreator {
+  userId: string;
+  name: string;
+  recipeCount: number;
+}
+
+export interface AdminOverviewTopLists {
+  topRecipes: AdminOverviewTopRecipe[];
+  topCreators: AdminOverviewTopCreator[];
+}
+
+export interface AdminOverviewActivityItem {
+  type: "user_registered" | "recipe_published" | "comment_moderated";
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+export type AiErrorCategory =
+  | "provider_error"
+  | "invalid_output"
+  | "timeout"
+  | "rate_limit"
+  | "unknown";
+
+export interface AdminOverviewAiFailureItem {
+  id: string;
+  model: string;
+  errorCategory: AiErrorCategory | null;
+  latencyMs: number;
+  createdAt: string;
+}
+
+export interface AdminOverviewFeeds {
+  latestActivity: AdminOverviewActivityItem[];
+  recentAiFailures: AdminOverviewAiFailureItem[];
+}
+
+export interface AdminOverviewData {
+  range: AdminOverviewRange;
+  kpis: AdminOverviewKpis;
+  trends: AdminOverviewTrends;
+  aiHealth: AdminOverviewAiHealth;
+  topLists: AdminOverviewTopLists;
+  feeds: AdminOverviewFeeds;
+}
+

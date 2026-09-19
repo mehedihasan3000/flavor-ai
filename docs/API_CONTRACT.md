@@ -507,6 +507,7 @@ the caller's whole favorites list. The `recipe` card projection returned by
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+| GET | `/admin/overview` | admin | **Additive:** platform analytics, KPIs, trends, AI health & activity feeds (`?range=7d\|30d\|90d`) |
 | GET | `/admin/users` | admin | List/search users (`AdminUserSearchQuery`: `page`, `limit`, `q`, `role`) |
 | GET | `/admin/recipes` | admin | List all recipes incl. hidden/draft (`AdminRecipeSearchQuery`: `page`, `limit`, `q`, `status`) |
 | PATCH | `/admin/recipes/:id` | admin | Hide/restore recipe (FR-ADMIN-02) |
@@ -518,6 +519,41 @@ the caller's whole favorites list. The `recipe` card projection returned by
 All admin actions are logged (FR-ADMIN-03, structured `console.info`; no separate
 audit-log model — FR-ADMIN-04 allows protected endpoints without a full
 dashboard for MVP). Non-admin → 403.
+
+**Additive (post-freeze): `GET /admin/overview`** (admin required). Additive endpoint; needs Lead sign-off per contract freeze. Accepts optional `?range=7d|30d|90d` (default `30d`). Invalid range → 400 `VALIDATION_ERROR`.
+
+Response → 200 `AdminOverviewResult`:
+```json
+{
+  "range": "30d",
+  "kpis": {
+    "totalUsers": 150,
+    "userRoles": { "user": 145, "admin": 5 },
+    "totalRecipes": 320,
+    "recipeStatus": { "published": 250, "draft": 50, "hidden": 20 },
+    "recipeSource": { "ai": 210, "manual": 110 },
+    "pendingModeration": { "hiddenRecipes": 20, "moderatedComments": 8, "total": 28 },
+    "totalComments": 412,
+    "totalFavorites": 890,
+    "platformAverageRating": 4.62,
+    "aiMetrics": { "total": 500, "successRate": 96.4, "averageLatencyMs": 1240 }
+  },
+  "trends": {
+    "userGrowth": [ { "date": "2026-03-01", "count": 5 } ],
+    "recipeCreation": [ { "date": "2026-03-01", "count": 12 } ]
+  },
+  "aiHealth": { "success": 482, "failed": 12, "timeout": 6 },
+  "topLists": {
+    "topRecipes": [ { "id": "...", "title": "Garlic Chicken", "averageRating": 4.9, "favoriteCount": 42, "status": "published" } ],
+    "topCreators": [ { "userId": "...", "name": "Chef Ada", "recipeCount": 18 } ]
+  },
+  "feeds": {
+    "latestActivity": [ { "type": "user_registered", "id": "...", "title": "Ada Lovelace", "createdAt": "ISO8601" } ],
+    "recentAiFailures": [ { "id": "...", "model": "llama3-70b-8192", "errorCategory": "timeout", "latencyMs": 30000, "createdAt": "ISO8601" } ]
+  }
+}
+```
+
 
 **`PATCH /admin/recipes/:id` body** (`AdminRecipeModerationInput`):
 ```json
