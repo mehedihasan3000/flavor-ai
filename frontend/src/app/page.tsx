@@ -13,6 +13,8 @@ import { buttonStyles, EmptyState } from "@/components/ui";
 import { RecipeCard } from "@/components/recipes/recipe-card";
 import { MotionProvider } from "@/components/home/motion-provider";
 import { HeroFadeIn, HeroFloat } from "@/components/home/hero-motion";
+import { Reveal } from "@/components/home/reveal";
+import { AIToolsShowcase } from "@/components/home/ai-tools-showcase";
 import { listRecipes } from "@/lib/api";
 import type { Recipe } from "@/lib/types";
 
@@ -239,203 +241,217 @@ function HowItWorks() {
     >
       {/* Section Header */}
       <div className="mx-auto max-w-3xl text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-1 text-xs font-bold text-primary-strong shadow-2xs">
-          <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
-          Three-Step Culinary Workflow
-        </span>
-        <h2
-          id="how-it-works-heading"
-          className="mt-4 text-3xl font-extrabold tracking-tight text-heading sm:text-4xl"
-        >
-          From pantry to plate in{" "}
-          <span className="bg-gradient-to-r from-primary via-amber-600 to-primary-strong bg-clip-text text-transparent">
-            three effortless steps
+        <Reveal>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft px-3.5 py-1 text-xs font-bold text-primary-strong shadow-2xs">
+            <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
+            Three-Step Culinary Workflow
           </span>
-        </h2>
-        <p className="mt-3 text-base sm:text-lg leading-relaxed text-subtle-foreground">
-          FlavorAI starts with what you already have, not an expensive grocery run. Eliminate food waste and whip up restaurant-quality dishes in minutes.
-        </p>
+        </Reveal>
+        <Reveal delay={0.06}>
+          <h2
+            id="how-it-works-heading"
+            className="mt-4 text-3xl font-extrabold tracking-tight text-heading sm:text-4xl"
+          >
+            From pantry to plate in{" "}
+            <span className="bg-gradient-to-r from-primary via-amber-600 to-primary-strong bg-clip-text text-transparent">
+              three effortless steps
+            </span>
+          </h2>
+        </Reveal>
+        <Reveal delay={0.12}>
+          <p className="mt-3 text-base sm:text-lg leading-relaxed text-subtle-foreground">
+            FlavorAI starts with what you already have, not an expensive grocery run. Eliminate food waste and whip up restaurant-quality dishes in minutes.
+          </p>
+        </Reveal>
       </div>
 
       {/* 3 Step Cards Grid */}
       <ol className="mt-12 grid list-none gap-6 sm:gap-8 lg:grid-cols-3">
         {/* Step 1 */}
-        <li className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-6 sm:p-7 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl">
-          <div
-            className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-amber-500 opacity-80 transition-opacity group-hover:opacity-100"
-            aria-hidden="true"
-          />
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft px-3 py-1 text-xs font-bold text-primary-strong">
-                <Sliders className="size-3.5" aria-hidden="true" />
-                Step 01
-              </span>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Pantry Input
-              </span>
+        <Reveal delay={0} className="flex flex-col">
+          <li className="group relative flex flex-1 flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-6 sm:p-7 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl">
+            <div
+              className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-amber-500 opacity-80 transition-opacity group-hover:opacity-100"
+              aria-hidden="true"
+            />
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary-soft px-3 py-1 text-xs font-bold text-primary-strong">
+                  <Sliders className="size-3.5" aria-hidden="true" />
+                  Step 01
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Pantry Input
+                </span>
+              </div>
+
+              <h3 className="mt-5 text-xl font-bold tracking-tight text-heading transition-colors group-hover:text-primary">
+                Share your pantry
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-subtle-foreground">
+                Add the ingredients you have on hand, snap a fridge photo, and set your diet, allergens, cook time, and cooking skill level.
+              </p>
             </div>
 
-            <h3 className="mt-5 text-xl font-bold tracking-tight text-heading transition-colors group-hover:text-primary">
-              Share your pantry
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-subtle-foreground">
-              Add the ingredients you have on hand, snap a fridge photo, and set your diet, allergens, cook time, and cooking skill level.
-            </p>
-          </div>
-
-          {/* Micro-UI: Pantry items & filters with explicit Example badge */}
-          <div className="mt-6 rounded-xl border border-border/80 bg-background/80 p-3.5 shadow-2xs backdrop-blur-xs">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 font-bold text-heading">
-                <span className="size-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
-                Available Ingredients
-              </span>
-              <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] font-medium text-subtle-foreground">
-                Example
-              </span>
+            {/* Micro-UI: Pantry items & filters with explicit Example badge */}
+            <div className="mt-6 rounded-xl border border-border/80 bg-background/80 p-3.5 shadow-2xs backdrop-blur-xs">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 font-bold text-heading">
+                  <span className="size-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
+                  Available Ingredients
+                </span>
+                <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] font-medium text-subtle-foreground">
+                  Example
+                </span>
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <span className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-heading shadow-2xs">
+                  🥑 Avocado
+                </span>
+                <span className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-heading shadow-2xs">
+                  🍗 Chicken breast
+                </span>
+                <span className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-heading shadow-2xs">
+                  🧄 Garlic
+                </span>
+              </div>
             </div>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-heading shadow-2xs">
-                🥑 Avocado
-              </span>
-              <span className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-heading shadow-2xs">
-                🍗 Chicken breast
-              </span>
-              <span className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-heading shadow-2xs">
-                🧄 Garlic
-              </span>
-            </div>
-          </div>
-        </li>
+          </li>
+        </Reveal>
 
         {/* Step 2 */}
-        <li className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-6 sm:p-7 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-amber-400 hover:shadow-xl">
-          <div
-            className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500 opacity-80 transition-opacity group-hover:opacity-100"
-            aria-hidden="true"
-          />
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
-                <Sparkles className="size-3.5 text-amber-600" aria-hidden="true" />
-                Step 02
-              </span>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                AI Synthesis
-              </span>
+        <Reveal delay={0.08} className="flex flex-col">
+          <li className="group relative flex flex-1 flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-6 sm:p-7 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-amber-400 hover:shadow-xl">
+            <div
+              className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500 opacity-80 transition-opacity group-hover:opacity-100"
+              aria-hidden="true"
+            />
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
+                  <Sparkles className="size-3.5 text-amber-600" aria-hidden="true" />
+                  Step 02
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  AI Synthesis
+                </span>
+              </div>
+
+              <h3 className="mt-5 text-xl font-bold tracking-tight text-heading transition-colors group-hover:text-amber-700">
+                Get a personalized recipe
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-subtle-foreground">
+                AI balances flavor pairings, generates ordered steps, estimates macronutrients, and highlights optional pantry additions.
+              </p>
             </div>
 
-            <h3 className="mt-5 text-xl font-bold tracking-tight text-heading transition-colors group-hover:text-amber-700">
-              Get a personalized recipe
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-subtle-foreground">
-              AI balances flavor pairings, generates ordered steps, estimates macronutrients, and highlights optional pantry additions.
-            </p>
-          </div>
-
-          {/* Micro-UI: Generated Recipe Match with explicit Example badge */}
-          <div className="mt-6 rounded-xl border border-border/80 bg-background/80 p-3.5 shadow-2xs backdrop-blur-xs">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 font-bold text-heading">
-                <Sparkles className="size-3.5 text-amber-500" aria-hidden="true" />
-                AI Recipe Output
-              </span>
-              <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] font-medium text-subtle-foreground">
-                Example
-              </span>
+            {/* Micro-UI: Generated Recipe Match with explicit Example badge */}
+            <div className="mt-6 rounded-xl border border-border/80 bg-background/80 p-3.5 shadow-2xs backdrop-blur-xs">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 font-bold text-heading">
+                  <Sparkles className="size-3.5 text-amber-500" aria-hidden="true" />
+                  AI Recipe Output
+                </span>
+                <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] font-medium text-subtle-foreground">
+                  Example
+                </span>
+              </div>
+              <div className="mt-2.5 rounded-lg border border-border/70 bg-card p-2.5 shadow-2xs">
+                <p className="truncate text-xs font-bold text-heading">Garlic-Herb Grilled Chicken</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">Detailed steps &amp; estimated nutrition</p>
+              </div>
             </div>
-            <div className="mt-2.5 rounded-lg border border-border/70 bg-card p-2.5 shadow-2xs">
-              <p className="truncate text-xs font-bold text-heading">Garlic-Herb Grilled Chicken</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">Detailed steps &amp; estimated nutrition</p>
-            </div>
-          </div>
-        </li>
+          </li>
+        </Reveal>
 
         {/* Step 3 */}
-        <li className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-6 sm:p-7 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-secondary/40 hover:shadow-xl">
-          <div
-            className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-secondary to-emerald-500 opacity-80 transition-opacity group-hover:opacity-100"
-            aria-hidden="true"
-          />
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-secondary/20 bg-secondary-soft px-3 py-1 text-xs font-bold text-secondary-strong">
-                <Star className="size-3.5 fill-amber-500 text-amber-500" aria-hidden="true" />
-                Step 03
-              </span>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Cook &amp; Share
-              </span>
+        <Reveal delay={0.16} className="flex flex-col">
+          <li className="group relative flex flex-1 flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card p-6 sm:p-7 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-secondary/40 hover:shadow-xl">
+            <div
+              className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-secondary to-emerald-500 opacity-80 transition-opacity group-hover:opacity-100"
+              aria-hidden="true"
+            />
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-secondary/20 bg-secondary-soft px-3 py-1 text-xs font-bold text-secondary-strong">
+                  <Star className="size-3.5 fill-amber-500 text-amber-500" aria-hidden="true" />
+                  Step 03
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Cook &amp; Share
+                </span>
+              </div>
+
+              <h3 className="mt-5 text-xl font-bold tracking-tight text-heading transition-colors group-hover:text-secondary-strong">
+                Cook, rate, and share
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-subtle-foreground">
+                Save recipes to your private cookbook, publish them to the community, and collect ratings and helpful cooking tips.
+              </p>
             </div>
 
-            <h3 className="mt-5 text-xl font-bold tracking-tight text-heading transition-colors group-hover:text-secondary-strong">
-              Cook, rate, and share
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-subtle-foreground">
-              Save recipes to your private cookbook, publish them to the community, and collect ratings and helpful cooking tips.
-            </p>
-          </div>
-
-          {/* Micro-UI: Social proof & community features */}
-          <div className="mt-6 rounded-xl border border-border/80 bg-background/80 p-3.5 shadow-2xs backdrop-blur-xs">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-heading">Community Cookbooks</span>
-              <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] font-medium text-subtle-foreground">
-                Example
-              </span>
+            {/* Micro-UI: Social proof & community features */}
+            <div className="mt-6 rounded-xl border border-border/80 bg-background/80 p-3.5 shadow-2xs backdrop-blur-xs">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-heading">Community Cookbooks</span>
+                <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] font-medium text-subtle-foreground">
+                  Example
+                </span>
+              </div>
+              <div className="mt-2.5 flex items-center gap-2 text-[11px]">
+                <span className="inline-flex items-center gap-1 rounded-md border border-rose-100 bg-rose-50 px-2 py-0.5 font-semibold text-rose-700">
+                  <Heart className="size-3 fill-rose-500 text-rose-500" aria-hidden="true" />
+                  Favorites
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary-soft px-2 py-0.5 font-semibold text-primary-strong">
+                  Ratings &amp; Reviews
+                </span>
+              </div>
             </div>
-            <div className="mt-2.5 flex items-center gap-2 text-[11px]">
-              <span className="inline-flex items-center gap-1 rounded-md border border-rose-100 bg-rose-50 px-2 py-0.5 font-semibold text-rose-700">
-                <Heart className="size-3 fill-rose-500 text-rose-500" aria-hidden="true" />
-                Favorites
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary-soft px-2 py-0.5 font-semibold text-primary-strong">
-                Ratings &amp; Reviews
-              </span>
-            </div>
-          </div>
-        </li>
+          </li>
+        </Reveal>
       </ol>
 
       {/* Bottom Conversion Callout */}
-      <div className="mt-12 sm:mt-16 flex flex-col sm:flex-row items-center justify-between gap-5 rounded-2xl border border-border/80 bg-gradient-to-r from-primary-soft/50 via-card to-secondary-soft/40 p-6 sm:p-8 shadow-xs backdrop-blur-xs">
-        <div className="space-y-1 text-center sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-2">
-            <span className="inline-flex size-2 rounded-full bg-primary" aria-hidden="true" />
-            <span className="text-xs font-bold uppercase tracking-wider text-primary-strong">
-              Instant Generation · Zero Food Waste
-            </span>
+      <Reveal delay={0.24}>
+        <div className="mt-12 sm:mt-16 flex flex-col sm:flex-row items-center justify-between gap-5 rounded-2xl border border-border/80 bg-gradient-to-r from-primary-soft/50 via-card to-secondary-soft/40 p-6 sm:p-8 shadow-xs backdrop-blur-xs">
+          <div className="space-y-1 text-center sm:text-left">
+            <div className="flex items-center justify-center sm:justify-start gap-2">
+              <span className="inline-flex size-2 rounded-full bg-primary" aria-hidden="true" />
+              <span className="text-xs font-bold uppercase tracking-wider text-primary-strong">
+                Instant Generation · Zero Food Waste
+              </span>
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold tracking-tight text-heading">
+              Ready to see what you can cook right now?
+            </h3>
+            <p className="text-sm text-subtle-foreground max-w-xl">
+              Enter what is in your fridge or pantry, and let our culinary AI surprise you with delicious, customized recipes.
+            </p>
           </div>
-          <h3 className="text-lg sm:text-xl font-bold tracking-tight text-heading">
-            Ready to see what you can cook right now?
-          </h3>
-          <p className="text-sm text-subtle-foreground max-w-xl">
-            Enter what is in your fridge or pantry, and let our culinary AI surprise you with delicious, customized recipes.
-          </p>
+          <div className="flex w-full shrink-0 flex-col items-center gap-3 sm:w-auto sm:flex-row">
+            <Link
+              href="/generator"
+              className={`${buttonStyles({
+                variant: "primary",
+                size: "md",
+              })} w-full gap-2 font-semibold shadow-xs hover:shadow-md sm:w-auto active:scale-[0.98]`}
+            >
+              <span>Try Recipe Generator</span>
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+            <Link
+              href="/recipes"
+              className={`${buttonStyles({
+                variant: "outline",
+                size: "md",
+              })} w-full font-medium sm:w-auto active:scale-[0.98]`}
+            >
+              Browse Recipes
+            </Link>
+          </div>
         </div>
-        <div className="flex w-full shrink-0 flex-col items-center gap-3 sm:w-auto sm:flex-row">
-          <Link
-            href="/generator"
-            className={`${buttonStyles({
-              variant: "primary",
-              size: "md",
-            })} w-full gap-2 font-semibold shadow-xs hover:shadow-md sm:w-auto`}
-          >
-            <span>Try Recipe Generator</span>
-            <ArrowRight className="size-4" aria-hidden="true" />
-          </Link>
-          <Link
-            href="/recipes"
-            className={`${buttonStyles({
-              variant: "outline",
-              size: "md",
-            })} w-full font-medium sm:w-auto`}
-          >
-            Browse Recipes
-          </Link>
-        </div>
-      </div>
+      </Reveal>
     </section>
   );
 }
@@ -518,6 +534,7 @@ export default async function HomePage() {
   return (
     <>
       <Hero totalCount={totalCount} topRecipe={topRecipe} />
+      <AIToolsShowcase />
       <HowItWorks />
       <FeaturedRecipes recipes={featuredRecipes} />
       <CallToActionBand />
