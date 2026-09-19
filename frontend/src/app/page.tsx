@@ -17,6 +17,8 @@ import { AIToolsShowcase } from "@/components/home/ai-tools-showcase";
 import { PantryQuickInput } from "@/components/home/pantry-quick-input";
 import { IngredientMarquee } from "@/components/home/ingredient-marquee";
 import { CommunitySection } from "@/components/home/community-section";
+import { FaqAccordion } from "@/components/home/faq-accordion";
+import { FavoritesStrip } from "@/components/home/favorites-strip";
 import { listRecipes } from "@/lib/api";
 import type { Recipe } from "@/lib/types";
 
@@ -490,7 +492,9 @@ export default async function HomePage() {
       <IngredientMarquee />
       <AIToolsShowcase />
       <HowItWorks />
+      <FavoritesStrip />
       <CommunitySection initialRecipes={featuredRecipes} />
+      <FaqAccordion />
       <CallToActionBand />
     </>
   );
