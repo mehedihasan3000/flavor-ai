@@ -132,7 +132,7 @@ Implement an **"Overview" tab** as the **first tab** on the existing `/admin` mo
 - [x] **Commit 5:** `feat(backend): add GET /admin/overview controller and route with requireAdmin, plus Vitest tests (auth 401/403, invalid range 400, happy path shape, zero-fill days)`
 - [x] **Commit 6:** `docs: sync API_CONTRACT.md and frontend types for admin overview`
 - [x] **Commit 7:** `feat(frontend): add getAdminOverview api client and install recharts`
-- [ ] **Commit 8:** `feat(frontend): add AdminOverviewPanel with KPI cards, range selector, loading/error states`
+- [x] **Commit 8:** `feat(frontend): add AdminOverviewPanel with KPI cards, range selector, loading/error states`
 - [ ] **Commit 9:** `feat(frontend): add overview charts, top tables and activity feeds`
 - [ ] **Commit 10:** `feat(frontend): make Overview the first admin tab, final polish, tick plan checklist`
 
