@@ -130,7 +130,7 @@ ia-controls`.
 - [x] **Commit 4**: `feat(frontend): hero stagger and floating animations`
 - [x] **Commit 5**: `feat(frontend): add AI tools showcase and How it works animations`
 - [x] **Commit 6**: `feat(frontend): add pantry quick input, ingredient marquee, generator prefill`
-- [ ] **Commit 7**: `feat(frontend): community section with Latest/Top rated toggle, category and dietary chips, placeholders`
+- [x] **Commit 7**: `feat(frontend): community section with Latest/Top rated toggle, category and dietary chips, placeholders`
 - [ ] **Commit 8**: `feat(frontend): add FAQ accordion and logged-in favorites strip`
 - [ ] **Commit 9**: `feat(frontend): final CTA, footer links, SEO metadata`
 - [ ] **Commit 10**: `chore(frontend): responsive polish, tests, tick plan checklist, final report`

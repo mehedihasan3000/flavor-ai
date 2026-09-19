@@ -9,14 +9,14 @@ import {
   Sparkles,
   Star,
 } from "@gravity-ui/icons";
-import { buttonStyles, EmptyState } from "@/components/ui";
-import { RecipeCard } from "@/components/recipes/recipe-card";
+import { buttonStyles } from "@/components/ui";
 import { MotionProvider } from "@/components/home/motion-provider";
 import { HeroFadeIn, HeroFloat } from "@/components/home/hero-motion";
 import { Reveal } from "@/components/home/reveal";
 import { AIToolsShowcase } from "@/components/home/ai-tools-showcase";
 import { PantryQuickInput } from "@/components/home/pantry-quick-input";
 import { IngredientMarquee } from "@/components/home/ingredient-marquee";
+import { CommunitySection } from "@/components/home/community-section";
 import { listRecipes } from "@/lib/api";
 import type { Recipe } from "@/lib/types";
 
@@ -458,56 +458,6 @@ function HowItWorks() {
   );
 }
 
-function FeaturedRecipes({ recipes }: { recipes: Recipe[] | null }) {
-  return (
-    <section
-      aria-labelledby="featured-heading"
-      className={`${containerClass} border-t border-border py-16 sm:py-20`}
-    >
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h2 id="featured-heading" className="text-2xl font-bold tracking-tight text-heading sm:text-3xl">
-            From the community
-          </h2>
-          <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            Discover recipes shared by other home cooks.
-          </p>
-        </div>
-        <Link
-          href="/recipes"
-          className="hidden shrink-0 items-center gap-1.5 rounded-button text-sm font-medium text-primary-strong transition-colors hover:text-primary-deep focus-visible:text-primary-deep sm:inline-flex"
-        >
-          Browse all recipes
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </Link>
-      </div>
-
-      {recipes && recipes.length > 0 ? (
-        <ul className="mt-8 grid list-none gap-6 p-0 sm:grid-cols-2 lg:grid-cols-3">
-          {recipes.map((recipe) => (
-            <li key={recipe.id}>
-              <RecipeCard recipe={recipe} className="h-full" />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="mt-8">
-          <EmptyState
-            icon={<Star />}
-            title="No published recipes yet"
-            description="Fresh community recipes are on the way. Be the first to share one with the world."
-            action={
-              <Link href="/generator" className={buttonStyles()}>
-                Generate the first one
-              </Link>
-            }
-          />
-        </div>
-      )}
-    </section>
-  );
-}
-
 function CallToActionBand() {
   return (
     <section aria-labelledby="cta-heading" className={`${containerClass} pb-20 pt-4`}>
@@ -520,7 +470,7 @@ function CallToActionBand() {
         </p>
         <Link
           href="/generator"
-          className="mt-7 inline-flex h-11 items-center justify-center gap-2 rounded-button bg-card px-6 text-base font-semibold text-primary-strong transition-colors hover:bg-primary-soft focus-visible:bg-primary-soft"
+          className="mt-7 inline-flex h-11 items-center justify-center gap-2 rounded-button bg-card px-6 text-base font-semibold text-primary-strong transition-colors hover:bg-primary-soft focus-visible:bg-primary-soft active:scale-[0.98]"
         >
           Start generating
           <ArrowRight aria-hidden="true" className="size-4" />
@@ -540,7 +490,7 @@ export default async function HomePage() {
       <IngredientMarquee />
       <AIToolsShowcase />
       <HowItWorks />
-      <FeaturedRecipes recipes={featuredRecipes} />
+      <CommunitySection initialRecipes={featuredRecipes} />
       <CallToActionBand />
     </>
   );
