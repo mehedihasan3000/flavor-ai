@@ -134,19 +134,20 @@ Implement an **"Overview" tab** as the **first tab** on the existing `/admin` mo
 - [x] **Commit 7:** `feat(frontend): add getAdminOverview api client and install recharts`
 - [x] **Commit 8:** `feat(frontend): add AdminOverviewPanel with KPI cards, range selector, loading/error states`
 - [x] **Commit 9:** `feat(frontend): add overview charts, top tables and activity feeds`
-- [ ] **Commit 10:** `feat(frontend): make Overview the first admin tab, final polish, tick plan checklist`
+- [x] **Commit 10:** `feat(frontend): make Overview the first admin tab, final polish, tick plan checklist`
 
 ---
 
 ## 7. Definition of Done
 
-- [ ] All 10 commits exist with clear conventional commit messages, and git status is clean.
-- [ ] `ADMIN_OVERVIEW_PLAN.md` exists in repository root with all checklist boxes ticked.
-- [ ] Backend build (`npm run build`), lint (`npm run lint`), and tests (`npm test`) pass (28 existing suites + new overview tests).
-- [ ] Frontend build (`npm run build`), lint (`npm run lint`), and tests (`npm test`) pass with zero warnings/errors.
-- [ ] `GET /api/v1/admin/overview` returns 401 without Bearer token, 403 for non-admin, 200 for admin user.
-- [ ] Zod schema in `backend/src/types/index.ts`, `docs/API_CONTRACT.md`, and `frontend/src/lib/types.ts` match identically.
-- [ ] Overview tab is the default first tab in `/admin`; Recipes, Comments, and Users tabs continue to work flawlessly.
-- [ ] No `setState` synchronously in `useEffect` bodies, no sensitive data leaked (`passwordHash`, raw `input`).
-- [ ] Supports 7d, 30d, 90d range switching; loading, error, and empty states handled gracefully across all cards/charts.
-- [ ] Seed data displays accurately in the Overview dashboard.
+- [x] All 10 commits exist with clear conventional commit messages, and git status is clean.
+- [x] `ADMIN_OVERVIEW_PLAN.md` exists in repository root with all checklist boxes ticked.
+- [x] Backend build (`npm run build`), lint (`npm run lint`), and tests (`npm test`) pass (29 suites total).
+- [x] Frontend build (`npm run build`), lint (`npm run lint`), and tests (`npm test`) pass with zero warnings/errors.
+- [x] `GET /api/v1/admin/overview` returns 401 without Bearer token, 403 for non-admin, 200 for admin user.
+- [x] Zod schema in `backend/src/types/index.ts`, `docs/API_CONTRACT.md`, and `frontend/src/lib/types.ts` match identically.
+- [x] Overview tab is the default first tab in `/admin`; Recipes, Comments, and Users tabs continue to work flawlessly.
+- [x] No `setState` synchronously in `useEffect` bodies, no sensitive data leaked (`passwordHash`, raw `input`).
+- [x] Supports 7d, 30d, 90d range switching; loading, error, and empty states handled gracefully across all cards/charts.
+- [x] Seed data displays accurately in the Overview dashboard.
+
