@@ -133,20 +133,20 @@ ia-controls`.
 - [x] **Commit 7**: `feat(frontend): community section with Latest/Top rated toggle, category and dietary chips, placeholders`
 - [x] **Commit 8**: `feat(frontend): add FAQ accordion and logged-in favorites strip`
 - [x] **Commit 9**: `feat(frontend): final CTA, footer links, SEO metadata`
-- [ ] **Commit 10**: `chore(frontend): responsive polish, tests, tick plan checklist, final report`
+- [x] **Commit 10**: `chore(frontend): responsive polish, tests, tick plan checklist, final report`
 
 ---
 
 ## Definition of Done
-- [ ] 10 commits exist with clear conventional commit messages, git status clean, nothing pushed
-- [ ] `HOME_UPGRADE_PLAN.md` in root, all 10 boxes ticked
-- [ ] Frontend lint, typecheck, tests, and `next build` pass
-- [ ] No fake stats, fake quotes, or hardcoded recipe counts remain
-- [ ] Hero image renders cleanly; fallback works if image fails
-- [ ] Pantry quick input navigates to `/generator?ingredients=...` without auto-submitting
-- [ ] Reduced motion disables all animations; page functional with JS disabled
-- [ ] React Compiler rules strictly respected (no synchronous `setState` in `useEffect`)
-- [ ] Fully responsive across 375px, 768px, 1280px (no horizontal overflow)
-- [ ] Backend, API contract, layout, and admin files untouched
-- [ ] `git diff --name-only develop...HEAD` shows only allowed files
-- [ ] Bundle size report included for `/` route First Load JS before and after
+- [x] 10 commits exist with clear conventional commit messages, git status clean, nothing pushed
+- [x] `HOME_UPGRADE_PLAN.md` in root, all 10 boxes ticked
+- [x] Frontend lint, typecheck, tests, and `next build` pass
+- [x] No fake stats, fake quotes, or hardcoded recipe counts remain
+- [x] Hero image renders cleanly; fallback works if image fails
+- [x] Pantry quick input navigates to `/generator?ingredients=...` without auto-submitting
+- [x] Reduced motion disables all animations; page functional with JS disabled
+- [x] React Compiler rules strictly respected (no synchronous `setState` in `useEffect`)
+- [x] Fully responsive across 375px, 768px, 1280px (no horizontal overflow)
+- [x] Backend, API contract, layout, and admin files untouched
+- [x] `git diff --name-only develop...HEAD` shows only allowed files
+- [x] Bundle size report included for `/` route First Load JS before and after
