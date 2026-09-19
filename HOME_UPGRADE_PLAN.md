@@ -127,7 +127,7 @@ ia-controls`.
 - [x] **Commit 1**: `docs: add HOME_UPGRADE_PLAN.md` (goal, scope lock, page structure, dynamic vs static, real data, animation rules, a11y, DoD)
 - [x] **Commit 2**: `fix(frontend): fix hero image and replace fake stats with real data`
 - [x] **Commit 3**: `chore(frontend): install motion, add MotionProvider and Reveal component`
-- [ ] **Commit 4**: `feat(frontend): hero stagger and floating animations`
+- [x] **Commit 4**: `feat(frontend): hero stagger and floating animations`
 - [ ] **Commit 5**: `feat(frontend): add AI tools showcase and How it works animations`
 - [ ] **Commit 6**: `feat(frontend): add pantry quick input, ingredient marquee, generator prefill`
 - [ ] **Commit 7**: `feat(frontend): community section with Latest/Top rated toggle, category and dietary chips, placeholders`

@@ -11,6 +11,8 @@ import {
 } from "@gravity-ui/icons";
 import { buttonStyles, EmptyState } from "@/components/ui";
 import { RecipeCard } from "@/components/recipes/recipe-card";
+import { MotionProvider } from "@/components/home/motion-provider";
+import { HeroFadeIn, HeroFloat } from "@/components/home/hero-motion";
 import { listRecipes } from "@/lib/api";
 import type { Recipe } from "@/lib/types";
 
@@ -54,160 +56,178 @@ function Hero({ totalCount, topRecipe }: { totalCount: number; topRecipe: Recipe
   const showcaseTime = topRecipe?.totalTimeMinutes ? `${topRecipe.totalTimeMinutes} min` : "Quick & Easy";
 
   return (
-    <section className="relative overflow-hidden pb-16 pt-8 sm:pb-24 sm:pt-14 lg:pb-28 lg:pt-16">
-      {/* Ambient background glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-24 left-1/2 -z-10 h-[520px] w-full max-w-7xl -translate-x-1/2 opacity-75 blur-3xl"
-      >
-        <div className="h-full w-full bg-gradient-to-tr from-primary/10 via-amber-200/25 to-secondary/10" />
-      </div>
+    <MotionProvider>
+      <section className="relative overflow-hidden pb-16 pt-8 sm:pb-24 sm:pt-14 lg:pb-28 lg:pt-16">
+        {/* Ambient background glow */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 left-1/2 -z-10 h-[520px] w-full max-w-7xl -translate-x-1/2 opacity-75 blur-3xl"
+        >
+          <div className="h-full w-full bg-gradient-to-tr from-primary/10 via-amber-200/25 to-secondary/10" />
+        </div>
 
-      <div className={containerClass}>
-        <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8">
-          {/* Left Column: Value proposition, Actions & Social Proof */}
-          <div className="flex flex-col items-start text-left lg:col-span-7">
-            {/* Eyebrow Pill */}
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary-soft/90 px-3.5 py-1.5 text-xs font-semibold text-primary-strong shadow-2xs backdrop-blur-xs">
-              <span className="flex size-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
-              <span>AI Culinary Copilot</span>
-              <span className="text-border-strong" aria-hidden="true">
-                •
-              </span>
-              <span className="font-medium text-subtle-foreground">Zero Food Waste</span>
-            </div>
-
-            {/* Headline */}
-            <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-heading sm:text-5xl lg:text-[3.65rem] lg:leading-[1.12]">
-              Turn your ingredients into{" "}
-              <span className="bg-gradient-to-r from-primary via-amber-500 to-primary-strong bg-clip-text text-transparent">
-                delicious meals
-              </span>{" "}
-              <span className="inline-block transition-transform hover:scale-110 duration-200" aria-hidden="true">
-                <Flame className="inline size-8 text-primary align-middle" />
-              </span>
-            </h1>
-
-            {/* Subtitle */}
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-subtle-foreground sm:text-lg">
-              Tell FlavorAI what is resting in your kitchen or snap a photo of your plate.
-              Get instant, nutrition-aware recipes, cut down grocery waste, and unleash your inner chef in seconds.
-            </p>
-
-            {/* Action Buttons */}
-            <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-              <Link
-                href="/generator"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-button bg-primary px-6 text-base font-semibold text-white shadow-md shadow-primary/25 transition-all hover:bg-primary-strong hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5"
-              >
-                <Sparkles className="size-4.5" aria-hidden="true" />
-                <span>Generate a recipe</span>
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
-              <Link
-                href="/nutrition-analyzer"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-button border border-border bg-card px-5 text-base font-semibold text-heading shadow-xs transition-all hover:border-primary/50 hover:bg-primary-soft/50 hover:text-primary-strong hover:-translate-y-0.5"
-              >
-                <Camera className="size-4.5 text-primary" aria-hidden="true" />
-                <span>Scan photo nutrition</span>
-              </Link>
-            </div>
-
-            {/* Secondary Explore Link */}
-            <div className="mt-4">
-              <Link
-                href="/recipes"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-primary-strong"
-              >
-                <span>Browse {totalCount > 0 ? `${totalCount}` : "all"} community recipes</span>
-                <ArrowRight className="size-3.5" aria-hidden="true" />
-              </Link>
-            </div>
-
-            {/* Verified Static Feature Highlights */}
-            <div className="mt-10 grid w-full grid-cols-3 gap-2.5 border-t border-border pt-8 sm:gap-4">
-              <div className="flex flex-col rounded-card border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs">
-                <div className="flex items-center gap-1.5 text-primary">
-                  <Sparkles className="size-4 text-primary" aria-hidden="true" />
-                  <span className="text-sm font-bold text-heading sm:text-base">4 AI Tools</span>
-                </div>
-                <span className="mt-1 text-xs text-muted-foreground">Smart culinary suite</span>
-              </div>
-
-              <div className="flex flex-col rounded-card border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs">
-                <div className="flex items-center gap-1.5 text-secondary-strong">
-                  <Check className="size-4 text-secondary-strong" aria-hidden="true" />
-                  <span className="text-sm font-bold text-heading sm:text-base">Free to Use</span>
-                </div>
-                <span className="mt-1 text-xs text-muted-foreground">No subscription required</span>
-              </div>
-
-              <div className="flex flex-col rounded-card border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs">
-                <div className="flex items-center gap-1.5 text-amber-500">
-                  <Sparkles className="size-4 text-amber-500" aria-hidden="true" />
-                  <span className="text-sm font-bold text-heading sm:text-base">Zero Waste</span>
-                </div>
-                <span className="mt-1 text-xs text-muted-foreground">Cook with pantry items</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Culinary Presentation & Real Top Recipe Showcase */}
-          <div className="relative flex justify-center lg:col-span-5 lg:justify-end">
-            {/* Ambient visual glow behind hero image */}
-            <div
-              aria-hidden="true"
-              className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-tr from-primary/20 via-amber-400/20 to-secondary/15 blur-2xl -z-10"
-            />
-
-            {/* Main Showcase Container */}
-            <div className="relative w-full max-w-md sm:max-w-lg lg:max-w-none">
-              <div className="group relative overflow-hidden rounded-[2rem] border border-white/80 bg-card shadow-2xl transition-transform duration-500 hover:scale-[1.01]">
-                {showcaseImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={showcaseImage}
-                    alt={showcaseTitle}
-                    className="aspect-square w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex aspect-square w-full items-center justify-center bg-gradient-to-br from-primary-soft via-amber-100/50 to-secondary-soft">
-                    <Sparkles className="size-16 text-primary/40" aria-hidden="true" />
-                  </div>
-                )}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-80" />
-
-                {/* Dish Caption Overlay */}
-                <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white drop-shadow-md">
-                  <div className="max-w-[70%]">
-                    <p className="truncate text-sm font-bold">{showcaseTitle}</p>
-                    <p className="text-xs text-white/90 capitalize">{showcaseCategory}</p>
-                  </div>
-                  <span className="rounded-full bg-white/25 px-2.5 py-1 text-xs font-semibold backdrop-blur-md">
-                    {showcaseTime}
+        <div className={containerClass}>
+          <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8">
+            {/* Left Column: Value proposition, Actions & Social Proof */}
+            <div className="flex flex-col items-start text-left lg:col-span-7">
+              {/* Eyebrow Pill */}
+              <HeroFadeIn delay={0}>
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary-soft/90 px-3.5 py-1.5 text-xs font-semibold text-primary-strong shadow-2xs backdrop-blur-xs">
+                  <span className="flex size-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
+                  <span>AI Culinary Copilot</span>
+                  <span className="text-border-strong" aria-hidden="true">
+                    •
                   </span>
+                  <span className="font-medium text-subtle-foreground">Zero Food Waste</span>
                 </div>
-              </div>
+              </HeroFadeIn>
 
-              {/* Real Top Rating Badge (if top recipe exists) */}
-              {topRecipe && (
-                <div className="absolute -left-3 -top-5 sm:-left-6 sm:-top-6 rounded-card border border-border/80 bg-card/95 p-3 shadow-xl backdrop-blur-md transition-transform hover:-translate-y-1">
-                  <div className="flex items-center gap-1.5 text-amber-500">
-                    <Star className="size-4 fill-amber-500" aria-hidden="true" />
-                    <span className="text-xs font-bold text-heading">
-                      {topRecipe.averageRating > 0 ? topRecipe.averageRating.toFixed(1) : "Top Rated"}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      ({topRecipe.ratingCount} {topRecipe.ratingCount === 1 ? "rating" : "ratings"})
-                    </span>
+              {/* Headline */}
+              <HeroFadeIn delay={0.06}>
+                <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-heading sm:text-5xl lg:text-[3.65rem] lg:leading-[1.12]">
+                  Turn your ingredients into{" "}
+                  <span className="bg-gradient-to-r from-primary via-amber-500 to-primary-strong bg-clip-text text-transparent">
+                    delicious meals
+                  </span>{" "}
+                  <span className="inline-block transition-transform hover:scale-110 duration-200" aria-hidden="true">
+                    <Flame className="inline size-8 text-primary align-middle" />
+                  </span>
+                </h1>
+              </HeroFadeIn>
+
+              {/* Subtitle */}
+              <HeroFadeIn delay={0.12}>
+                <p className="mt-5 max-w-xl text-base leading-relaxed text-subtle-foreground sm:text-lg">
+                  Tell FlavorAI what is resting in your kitchen or snap a photo of your plate.
+                  Get instant, nutrition-aware recipes, cut down grocery waste, and unleash your inner chef in seconds.
+                </p>
+              </HeroFadeIn>
+
+              {/* Action Buttons */}
+              <HeroFadeIn delay={0.18}>
+                <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                  <Link
+                    href="/generator"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-button bg-primary px-6 text-base font-semibold text-white shadow-md shadow-primary/25 transition-all hover:bg-primary-strong hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-[0.98]"
+                  >
+                    <Sparkles className="size-4.5" aria-hidden="true" />
+                    <span>Generate a recipe</span>
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </Link>
+                  <Link
+                    href="/nutrition-analyzer"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-button border border-border bg-card px-5 text-base font-semibold text-heading shadow-xs transition-all hover:border-primary/50 hover:bg-primary-soft/50 hover:text-primary-strong hover:-translate-y-0.5 active:scale-[0.98]"
+                  >
+                    <Camera className="size-4.5 text-primary" aria-hidden="true" />
+                    <span>Scan photo nutrition</span>
+                  </Link>
+                </div>
+              </HeroFadeIn>
+
+              {/* Secondary Explore Link */}
+              <HeroFadeIn delay={0.24}>
+                <div className="mt-4">
+                  <Link
+                    href="/recipes"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-primary-strong"
+                  >
+                    <span>Browse {totalCount > 0 ? `${totalCount}` : "all"} community recipes</span>
+                    <ArrowRight className="size-3.5" aria-hidden="true" />
+                  </Link>
+                </div>
+              </HeroFadeIn>
+
+              {/* Verified Static Feature Highlights */}
+              <HeroFadeIn delay={0.30}>
+                <div className="mt-10 grid w-full grid-cols-3 gap-2.5 border-t border-border pt-8 sm:gap-4">
+                  <div className="flex flex-col rounded-card border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs">
+                    <div className="flex items-center gap-1.5 text-primary">
+                      <Sparkles className="size-4 text-primary" aria-hidden="true" />
+                      <span className="text-sm font-bold text-heading sm:text-base">4 AI Tools</span>
+                    </div>
+                    <span className="mt-1 text-xs text-muted-foreground">Smart culinary suite</span>
+                  </div>
+
+                  <div className="flex flex-col rounded-card border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs">
+                    <div className="flex items-center gap-1.5 text-secondary-strong">
+                      <Check className="size-4 text-secondary-strong" aria-hidden="true" />
+                      <span className="text-sm font-bold text-heading sm:text-base">Free to Use</span>
+                    </div>
+                    <span className="mt-1 text-xs text-muted-foreground">No subscription required</span>
+                  </div>
+
+                  <div className="flex flex-col rounded-card border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs">
+                    <div className="flex items-center gap-1.5 text-amber-500">
+                      <Sparkles className="size-4 text-amber-500" aria-hidden="true" />
+                      <span className="text-sm font-bold text-heading sm:text-base">Zero Waste</span>
+                    </div>
+                    <span className="mt-1 text-xs text-muted-foreground">Cook with pantry items</span>
                   </div>
                 </div>
-              )}
+              </HeroFadeIn>
+            </div>
+
+            {/* Right Column: Culinary Presentation & Real Top Recipe Showcase */}
+            <div className="relative flex justify-center lg:col-span-5 lg:justify-end">
+              {/* Ambient visual glow behind hero image */}
+              <div
+                aria-hidden="true"
+                className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-tr from-primary/20 via-amber-400/20 to-secondary/15 blur-2xl -z-10"
+              />
+
+              {/* Main Showcase Container */}
+              <HeroFloat delay={0}>
+                <div className="relative w-full max-w-md sm:max-w-lg lg:max-w-none">
+                  <div className="group relative overflow-hidden rounded-[2rem] border border-white/80 bg-card shadow-2xl transition-transform duration-500 hover:scale-[1.01]">
+                    {showcaseImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={showcaseImage}
+                        alt={showcaseTitle}
+                        className="aspect-square w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full items-center justify-center bg-gradient-to-br from-primary-soft via-amber-100/50 to-secondary-soft">
+                        <Sparkles className="size-16 text-primary/40" aria-hidden="true" />
+                      </div>
+                    )}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-80" />
+
+                    {/* Dish Caption Overlay */}
+                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white drop-shadow-md">
+                      <div className="max-w-[70%]">
+                        <p className="truncate text-sm font-bold">{showcaseTitle}</p>
+                        <p className="text-xs text-white/90 capitalize">{showcaseCategory}</p>
+                      </div>
+                      <span className="rounded-full bg-white/25 px-2.5 py-1 text-xs font-semibold backdrop-blur-md">
+                        {showcaseTime}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Real Top Rating Badge (if top recipe exists) */}
+                  {topRecipe && (
+                    <HeroFloat delay={0.3}>
+                      <div className="absolute -left-3 -top-5 sm:-left-6 sm:-top-6 rounded-card border border-border/80 bg-card/95 p-3 shadow-xl backdrop-blur-md transition-transform hover:-translate-y-1">
+                        <div className="flex items-center gap-1.5 text-amber-500">
+                          <Star className="size-4 fill-amber-500" aria-hidden="true" />
+                          <span className="text-xs font-bold text-heading">
+                            {topRecipe.averageRating > 0 ? topRecipe.averageRating.toFixed(1) : "Top Rated"}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            ({topRecipe.ratingCount} {topRecipe.ratingCount === 1 ? "rating" : "ratings"})
+                          </span>
+                        </div>
+                      </div>
+                    </HeroFloat>
+                  )}
+                </div>
+              </HeroFloat>
             </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </MotionProvider>
   );
 }
 
