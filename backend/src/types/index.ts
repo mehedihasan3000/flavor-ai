@@ -673,3 +673,133 @@ export const AdminCommentModerationInput = z.object({
 });
 
 export type AdminCommentModerationInput = z.infer<typeof AdminCommentModerationInput>;
+
+// ---------------------------------------------------------------------------
+// Admin Overview Dashboard (Additive - Post-Freeze)
+// ---------------------------------------------------------------------------
+
+export const ADMIN_OVERVIEW_RANGE = ["7d", "30d", "90d"] as const;
+
+export const AdminOverviewQuery = z.object({
+  range: z.enum(ADMIN_OVERVIEW_RANGE).default("30d"),
+});
+
+export type AdminOverviewQuery = z.infer<typeof AdminOverviewQuery>;
+
+export const AdminOverviewKpis = z.object({
+  totalUsers: z.number().int().nonnegative(),
+  userRoles: z.object({
+    user: z.number().int().nonnegative(),
+    admin: z.number().int().nonnegative(),
+  }),
+  totalRecipes: z.number().int().nonnegative(),
+  recipeStatus: z.object({
+    published: z.number().int().nonnegative(),
+    draft: z.number().int().nonnegative(),
+    hidden: z.number().int().nonnegative(),
+  }),
+  recipeSource: z.object({
+    ai: z.number().int().nonnegative(),
+    manual: z.number().int().nonnegative(),
+  }),
+  pendingModeration: z.object({
+    hiddenRecipes: z.number().int().nonnegative(),
+    moderatedComments: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
+  totalComments: z.number().int().nonnegative(),
+  totalFavorites: z.number().int().nonnegative(),
+  platformAverageRating: z.number().min(0).max(5),
+  aiMetrics: z.object({
+    total: z.number().int().nonnegative(),
+    successRate: z.number().min(0).max(100),
+    averageLatencyMs: z.number().nonnegative(),
+  }),
+});
+
+export type AdminOverviewKpis = z.infer<typeof AdminOverviewKpis>;
+
+export const AdminOverviewTrendPoint = z.object({
+  date: z.string(),
+  count: z.number().int().nonnegative(),
+});
+
+export type AdminOverviewTrendPoint = z.infer<typeof AdminOverviewTrendPoint>;
+
+export const AdminOverviewTrends = z.object({
+  userGrowth: z.array(AdminOverviewTrendPoint),
+  recipeCreation: z.array(AdminOverviewTrendPoint),
+});
+
+export type AdminOverviewTrends = z.infer<typeof AdminOverviewTrends>;
+
+export const AdminOverviewAiHealth = z.object({
+  success: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  timeout: z.number().int().nonnegative(),
+});
+
+export type AdminOverviewAiHealth = z.infer<typeof AdminOverviewAiHealth>;
+
+export const AdminOverviewTopRecipe = z.object({
+  id: ObjectIdString,
+  title: z.string(),
+  averageRating: z.number(),
+  favoriteCount: z.number().int().nonnegative(),
+  status: z.enum(RECIPE_STATUS),
+});
+
+export type AdminOverviewTopRecipe = z.infer<typeof AdminOverviewTopRecipe>;
+
+export const AdminOverviewTopCreator = z.object({
+  userId: ObjectIdString,
+  name: z.string(),
+  recipeCount: z.number().int().nonnegative(),
+});
+
+export type AdminOverviewTopCreator = z.infer<typeof AdminOverviewTopCreator>;
+
+export const AdminOverviewTopLists = z.object({
+  topRecipes: z.array(AdminOverviewTopRecipe),
+  topCreators: z.array(AdminOverviewTopCreator),
+});
+
+export type AdminOverviewTopLists = z.infer<typeof AdminOverviewTopLists>;
+
+export const AdminOverviewActivityItem = z.object({
+  type: z.enum(["user_registered", "recipe_published", "comment_moderated"]),
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+});
+
+export type AdminOverviewActivityItem = z.infer<typeof AdminOverviewActivityItem>;
+
+export const AdminOverviewAiFailureItem = z.object({
+  id: z.string(),
+  model: z.string(),
+  errorCategory: z.enum(AI_ERROR_CATEGORY).nullable(),
+  latencyMs: z.number().nonnegative(),
+  createdAt: z.string(),
+});
+
+export type AdminOverviewAiFailureItem = z.infer<typeof AdminOverviewAiFailureItem>;
+
+export const AdminOverviewFeeds = z.object({
+  latestActivity: z.array(AdminOverviewActivityItem),
+  recentAiFailures: z.array(AdminOverviewAiFailureItem),
+});
+
+export type AdminOverviewFeeds = z.infer<typeof AdminOverviewFeeds>;
+
+export const AdminOverviewResult = z.object({
+  range: z.enum(ADMIN_OVERVIEW_RANGE),
+  kpis: AdminOverviewKpis,
+  trends: AdminOverviewTrends,
+  aiHealth: AdminOverviewAiHealth,
+  topLists: AdminOverviewTopLists,
+  feeds: AdminOverviewFeeds,
+});
+
+export type AdminOverviewResult = z.infer<typeof AdminOverviewResult>;
+
