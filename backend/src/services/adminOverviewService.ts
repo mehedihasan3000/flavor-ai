@@ -17,27 +17,29 @@ import type {
   AdminOverviewTrendPoint,
 } from "../types/index.js";
 
-/** Helper: calculate start date for range filter */
+/** Helper: calculate start date for range filter in UTC */
 export function getStartDateForRange(range: "7d" | "30d" | "90d"): Date {
   const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
   const date = new Date();
-  date.setDate(date.getDate() - days);
-  date.setHours(0, 0, 0, 0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() - days);
   return date;
 }
 
-/** Helper: generate array of YYYY-MM-DD date strings for continuous trend series */
+/** Helper: generate array of YYYY-MM-DD date strings for continuous trend series in UTC */
 export function generateDateSeries(range: "7d" | "30d" | "90d"): string[] {
   const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
   const dates: string[] = [];
   const now = new Date();
+  const utcToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
+    const d = new Date(utcToday);
+    d.setUTCDate(d.getUTCDate() - i);
     dates.push(d.toISOString().slice(0, 10));
   }
   return dates;
 }
+
 
 /** Fetch all-time KPI counts across platform */
 export async function getAdminOverviewKpis(): Promise<AdminOverviewKpis> {
