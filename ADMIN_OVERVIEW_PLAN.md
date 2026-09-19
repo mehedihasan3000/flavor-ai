@@ -133,7 +133,7 @@ Implement an **"Overview" tab** as the **first tab** on the existing `/admin` mo
 - [x] **Commit 6:** `docs: sync API_CONTRACT.md and frontend types for admin overview`
 - [x] **Commit 7:** `feat(frontend): add getAdminOverview api client and install recharts`
 - [x] **Commit 8:** `feat(frontend): add AdminOverviewPanel with KPI cards, range selector, loading/error states`
-- [ ] **Commit 9:** `feat(frontend): add overview charts, top tables and activity feeds`
+- [x] **Commit 9:** `feat(frontend): add overview charts, top tables and activity feeds`
 - [ ] **Commit 10:** `feat(frontend): make Overview the first admin tab, final polish, tick plan checklist`
 
 ---
