@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -21,6 +22,25 @@ import { FaqAccordion } from "@/components/home/faq-accordion";
 import { FavoritesStrip } from "@/components/home/favorites-strip";
 import { listRecipes } from "@/lib/api";
 import type { Recipe } from "@/lib/types";
+
+export const metadata: Metadata = {
+  title: "FlavorAI — Turn Your Ingredients into Delicious Meals",
+  description:
+    "Generate personalized recipes from ingredients you already have with AI copilot. Reduce grocery waste, analyze photo nutrition, and explore community cookbooks.",
+  openGraph: {
+    title: "FlavorAI — Smart Recipe Generator & Food Platform",
+    description:
+      "Turn your available pantry ingredients into delicious meals with AI. Zero food waste, photo nutrition scanner, and community recipes.",
+    siteName: "FlavorAI",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FlavorAI — Turn Your Ingredients into Delicious Meals",
+    description:
+      "Generate personalized recipes from ingredients you already have with AI copilot.",
+  },
+};
 
 const containerClass = "mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8";
 

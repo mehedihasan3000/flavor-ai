@@ -132,7 +132,7 @@ ia-controls`.
 - [x] **Commit 6**: `feat(frontend): add pantry quick input, ingredient marquee, generator prefill`
 - [x] **Commit 7**: `feat(frontend): community section with Latest/Top rated toggle, category and dietary chips, placeholders`
 - [x] **Commit 8**: `feat(frontend): add FAQ accordion and logged-in favorites strip`
-- [ ] **Commit 9**: `feat(frontend): final CTA, footer links, SEO metadata`
+- [x] **Commit 9**: `feat(frontend): final CTA, footer links, SEO metadata`
 - [ ] **Commit 10**: `chore(frontend): responsive polish, tests, tick plan checklist, final report`
 
 ---
