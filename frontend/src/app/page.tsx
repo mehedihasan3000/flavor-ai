@@ -15,6 +15,8 @@ import { MotionProvider } from "@/components/home/motion-provider";
 import { HeroFadeIn, HeroFloat } from "@/components/home/hero-motion";
 import { Reveal } from "@/components/home/reveal";
 import { AIToolsShowcase } from "@/components/home/ai-tools-showcase";
+import { PantryQuickInput } from "@/components/home/pantry-quick-input";
+import { IngredientMarquee } from "@/components/home/ingredient-marquee";
 import { listRecipes } from "@/lib/api";
 import type { Recipe } from "@/lib/types";
 
@@ -534,6 +536,8 @@ export default async function HomePage() {
   return (
     <>
       <Hero totalCount={totalCount} topRecipe={topRecipe} />
+      <PantryQuickInput />
+      <IngredientMarquee />
       <AIToolsShowcase />
       <HowItWorks />
       <FeaturedRecipes recipes={featuredRecipes} />

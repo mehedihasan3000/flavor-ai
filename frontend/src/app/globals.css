@@ -97,6 +97,26 @@
   }
 }
 
+@keyframes home-marquee-slide {
+  from {
+    transform: translateX(0%);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.home-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: home-marquee-slide 35s linear infinite;
+}
+
+.home-marquee-track:hover,
+.home-marquee-track:focus-within {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
@@ -106,4 +126,10 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  .home-marquee-track {
+    animation: none !important;
+    transform: none !important;
+  }
 }
+
