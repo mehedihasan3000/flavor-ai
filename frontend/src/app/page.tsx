@@ -12,7 +12,8 @@ import {
 } from "@gravity-ui/icons";
 import { buttonStyles } from "@/components/ui";
 import { MotionProvider } from "@/components/home/motion-provider";
-import { HeroFadeIn, HeroFloat } from "@/components/home/hero-motion";
+import { HeroFadeIn } from "@/components/home/hero-motion";
+import { HeroCarousel } from "@/components/home/hero-carousel";
 import { Reveal } from "@/components/home/reveal";
 import { AIToolsShowcase } from "@/components/home/ai-tools-showcase";
 import { PantryQuickInput } from "@/components/home/pantry-quick-input";
@@ -46,41 +47,36 @@ const containerClass = "mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8";
 
 interface HomeData {
   totalCount: number;
-  topRecipe: Recipe | null;
+  topRecipes: Recipe[];
   featuredRecipes: Recipe[] | null;
 }
 
 /**
- * Fetches homepage data: recipe total count, top-rated recipe for Hero showcase,
+ * Fetches homepage data: recipe total count, top 5 highest-rated recipes for Hero Carousel,
  * and up to 3 newest published recipes. Gracefully returns fallbacks on API error.
  */
 async function getHomeData(): Promise<HomeData> {
   try {
     const [countResult, topResult, featuredResult] = await Promise.all([
       listRecipes({ limit: 1 }),
-      listRecipes({ sort: "highest-rated", limit: 1 }),
+      listRecipes({ sort: "highest-rated", limit: 5 }),
       listRecipes({ sort: "newest", limit: 3 }),
     ]);
     return {
       totalCount: countResult.total,
-      topRecipe: topResult.items[0] ?? null,
+      topRecipes: topResult.items,
       featuredRecipes: featuredResult.items,
     };
   } catch {
     return {
       totalCount: 0,
-      topRecipe: null,
+      topRecipes: [],
       featuredRecipes: null,
     };
   }
 }
 
-function Hero({ totalCount, topRecipe }: { totalCount: number; topRecipe: Recipe | null }) {
-  const showcaseTitle = topRecipe?.title ?? "Artisan Kitchen Showcase";
-  const showcaseImage = topRecipe?.imageUrl ?? "/images/spicy-meat.jpg";
-  const showcaseCategory = topRecipe?.category ? topRecipe.category.replace("-", " ") : "Community Favorite";
-  const showcaseTime = topRecipe?.totalTimeMinutes ? `${topRecipe.totalTimeMinutes} min` : "Quick & Easy";
-
+function Hero({ totalCount, topRecipes }: { totalCount: number; topRecipes: Recipe[] }) {
   return (
     <MotionProvider>
       <section className="relative overflow-hidden pb-16 pt-8 sm:pb-24 sm:pt-14 lg:pb-28 lg:pt-16">
@@ -193,63 +189,8 @@ function Hero({ totalCount, topRecipe }: { totalCount: number; topRecipe: Recipe
               </HeroFadeIn>
             </div>
 
-            {/* Right Column: Culinary Presentation & Real Top Recipe Showcase */}
-            <div className="relative flex justify-center lg:col-span-5 lg:justify-end">
-              {/* Ambient visual glow behind hero image */}
-              <div
-                aria-hidden="true"
-                className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-tr from-primary/20 via-amber-400/20 to-secondary/15 blur-2xl -z-10"
-              />
-
-              {/* Main Showcase Container */}
-              <HeroFloat delay={0}>
-                <div className="relative w-full max-w-md sm:max-w-lg lg:max-w-none">
-                  <div className="group relative overflow-hidden rounded-[2rem] border border-white/80 bg-card shadow-2xl transition-transform duration-500 hover:scale-[1.01]">
-                    {showcaseImage ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={showcaseImage}
-                        alt={showcaseTitle}
-                        className="aspect-square w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex aspect-square w-full items-center justify-center bg-gradient-to-br from-primary-soft via-amber-100/50 to-secondary-soft">
-                        <Sparkles className="size-16 text-primary/40" aria-hidden="true" />
-                      </div>
-                    )}
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-80" />
-
-                    {/* Dish Caption Overlay */}
-                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white drop-shadow-md">
-                      <div className="max-w-[70%]">
-                        <p className="truncate text-sm font-bold">{showcaseTitle}</p>
-                        <p className="text-xs text-white/90 capitalize">{showcaseCategory}</p>
-                      </div>
-                      <span className="rounded-full bg-white/25 px-2.5 py-1 text-xs font-semibold backdrop-blur-md">
-                        {showcaseTime}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Real Top Rating Badge (if top recipe exists) */}
-                  {topRecipe && (
-                    <HeroFloat delay={0.3}>
-                      <div className="absolute -left-3 -top-5 sm:-left-6 sm:-top-6 rounded-card border border-border/80 bg-card/95 p-3 shadow-xl backdrop-blur-md transition-transform hover:-translate-y-1">
-                        <div className="flex items-center gap-1.5 text-amber-500">
-                          <Star className="size-4 fill-amber-500" aria-hidden="true" />
-                          <span className="text-xs font-bold text-heading">
-                            {topRecipe.averageRating > 0 ? topRecipe.averageRating.toFixed(1) : "Top Rated"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            ({topRecipe.ratingCount} {topRecipe.ratingCount === 1 ? "rating" : "ratings"})
-                          </span>
-                        </div>
-                      </div>
-                    </HeroFloat>
-                  )}
-                </div>
-              </HeroFloat>
-            </div>
+            {/* Right Column: Interactive Auto-Sliding Hero Carousel */}
+            <HeroCarousel recipes={topRecipes} />
           </div>
         </div>
       </section>
@@ -503,11 +444,11 @@ function CallToActionBand() {
 }
 
 export default async function HomePage() {
-  const { totalCount, topRecipe, featuredRecipes } = await getHomeData();
+  const { totalCount, topRecipes, featuredRecipes } = await getHomeData();
 
   return (
     <>
-      <Hero totalCount={totalCount} topRecipe={topRecipe} />
+      <Hero totalCount={totalCount} topRecipes={topRecipes} />
       <PantryQuickInput />
       <IngredientMarquee />
       <AIToolsShowcase />

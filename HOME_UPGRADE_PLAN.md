@@ -53,7 +53,7 @@ Upgrade the FlavorAI Home Page (`/`) to provide a stunning, interactive, real-da
 
 ## Page Structure
 0. **Navbar**: UNCHANGED (do not touch).
-1. **Hero**: Headline, subheadline, CTAs (`/generator`, `/nutrition-analyzer`), real recipe count, right-side real top-rated dish showcase card + floating chips.
+1. **Hero**: Headline, subheadline, CTAs (`/generator`, `/nutrition-analyzer`), real recipe count, right-side **Auto-Sliding 5-Second Top-Rated Recipe Carousel** with manual dot navigation and pause-on-hover.
 2. **Pantry Quick Input**: Quick ingredient input + suggestion chips navigating to `/generator?ingredients=a,b,c`.
 3. **Ingredient Marquee**: Thin CSS-only scrolling strip of fresh ingredient icons/pills.
 4. **AI Tools Showcase**: 4 feature cards (`/generator`, `/assistant`, `/nutrition-analyzer`, `/diet-plan`).
@@ -66,15 +66,15 @@ Upgrade the FlavorAI Home Page (`/`) to provide a stunning, interactive, real-da
 ---
 
 ## Dynamic vs Static
-- **Dynamic Data**: Real community recipe total (`result.total` from `listRecipes`), latest/top-rated recipe list, hero top-rated dish card, recipe count-up display, logged-in user favorites strip.
+- **Dynamic Data**: Real community recipe total (`result.total` from `listRecipes`), latest/top-rated recipe list, hero top-rated dish carousel (top 5 recipes), recipe count-up display, logged-in user favorites strip.
 - **Static Content**: AI tools cards, How it works steps/examples, FAQ accordion items, ingredient marquee list, category & dietary filter chip lists.
 
 ---
 
 ## Real Data Rules
-- Remove all fake stats/quotes from `page.tsx` lines 103-411 (`"4.9/5"`, `"15K+ Cook Reviews"`, `"50K+ Recipes Generated"`, `"98% Pantry Match Rate"`, `"Sarah K., Verified Cook"`, `"Artisan Harvest Grain Bowl"`, `"420 kcal"`, `"94% conf."`, `"Chef Approved"`).
-- Hero showcase card uses the real top-rated published recipe via `listRecipes({ sort: "highest-rated", limit: 1 })`.
-- If no recipe or no image exists: gradient + icon fallback with neutral static text.
+- Remove all fake stats/quotes from `page.tsx` (`"4.9/5"`, `"15K+ Cook Reviews"`, `"50K+ Recipes Generated"`, `"98% Pantry Match Rate"`, `"Sarah K., Verified Cook"`).
+- Hero showcase carousel fetches the **top 5 highest-rated published recipes** via `listRecipes({ sort: "highest-rated", limit: 5 })`.
+- If fewer than 5 recipes exist in the DB, gracefully cycle through available items or use gradient + icon fallbacks.
 - Server-side data fetches use graceful fallback handling (hide section if empty/error, never crash the page).
 
 ---
@@ -84,20 +84,25 @@ Upgrade the FlavorAI Home Page (`/`) to provide a stunning, interactive, real-da
 - `<LazyMotion features={domAnimation} strict>` + `<MotionConfig reducedMotion="user">` inside `MotionProvider` scoped to home components only.
 - Use `m` components (`m.div`, `m.section`) to keep bundle minimal.
 - Animate only opacity and transform (`y`, `x`, `scale`). CLS must stay ~0.
+- Hero carousel crossfade transitions use `AnimatePresence mode="wait"` with lightweight opacity/transform slides.
+- **Auto-slide 5-Second Carousel**:
+  - Auto-advance index every 5000ms.
+  - Pauses automatically when hovered (`onMouseEnter`/`onMouseLeave`) or focused.
+  - Includes manual dot navigation and next/previous controls.
+  - **React Compiler Compliance**: Zero synchronous `setState` inside `useEffect` bodies. `setInterval` state updater (`setIndex(prev => ...)`) runs strictly inside the async timer callback; cleanup handled in `useEffect` return function (`clearInterval`).
 - Hero LCP elements must NOT start at opacity 0. Below-the-fold reveals include a `<noscript>` fallback style.
 - Floating animation loops: 6-8s, max 6-8px transform offset, `ease-in-out`, repeat infinite.
 - Recipe count count-up ONLY for real numbers.
-- Zero synchronous `setState` calls inside `useEffect` bodies.
 
 ---
 
 ## Accessibility
-- FAQ accordion uses native `<button>` with `aria-expanded` and `ar
-ia-controls`.
+- Hero carousel includes `aria-roledescription="carousel"`, slide labels (`aria-label="Slide X of Y"`), and keyboard navigable dots/arrows.
+- FAQ accordion uses native `<button>` with `aria-expanded` and `aria-controls`.
 - Icon buttons have explicit `aria-label` attributes.
 - Visible focus rings (`focus-visible:outline...`) on all interactive elements.
 - Marquee is set to `aria-hidden="true"` and pauses on `:hover` or `:focus-within`.
-- Reduced motion: all movement disabled when `prefers-reduced-motion: reduce` is active.
+- Reduced motion: all movement disabled when `prefers-reduced-motion: reduce` is active (carousel falls back to static step or instant transition).
 
 ---
 
@@ -116,13 +121,13 @@ ia-controls`.
 ---
 
 ## Risks & Mitigations
-- **Hydration / SSR Mismatch**: Scope client motion components tightly, use `LazyMotion`, and include `<noscript>` fallbacks.
-- **CLS (Cumulative Layout Shift)**: Animate only opacity and transform.
-- **React Compiler Violations**: Zero `setState` inside `useEffect` sync body.
+- **Hydration / SSR Mismatch**: Scope client motion components tightly, use `LazyMotion`, and include `<noscript>` fallbacks. First slide rendered on SSR matches server props.
+- **CLS (Cumulative Layout Shift)**: Reserve fixed aspect-ratio container for the carousel card so slides crossfade without layout shift.
+- **React Compiler Violations**: Zero `setState` inside `useEffect` sync body. `setInterval` callback only mutates state via functional updater `setActiveIndex((prev) => ...)`.
 
 ---
 
-## 10-Commit Execution Plan
+## 11-Commit Execution Plan
 
 - [x] **Commit 1**: `docs: add HOME_UPGRADE_PLAN.md` (goal, scope lock, page structure, dynamic vs static, real data, animation rules, a11y, DoD)
 - [x] **Commit 2**: `fix(frontend): fix hero image and replace fake stats with real data`
@@ -134,18 +139,20 @@ ia-controls`.
 - [x] **Commit 8**: `feat(frontend): add FAQ accordion and logged-in favorites strip`
 - [x] **Commit 9**: `feat(frontend): final CTA, footer links, SEO metadata`
 - [x] **Commit 10**: `chore(frontend): responsive polish, tests, tick plan checklist, final report`
+- [x] **Commit 11**: `feat(frontend): add auto-sliding 5s hero recipe carousel with AnimatePresence and pause on hover`
 
 ---
 
 ## Definition of Done
-- [x] 10 commits exist with clear conventional commit messages, git status clean, nothing pushed
-- [x] `HOME_UPGRADE_PLAN.md` in root, all 10 boxes ticked
+- [x] 11 commits exist with clear conventional commit messages, git status clean, nothing pushed
+- [x] `HOME_UPGRADE_PLAN.md` in root, all 11 boxes ticked
+- [x] Hero right side features an auto-sliding 5s carousel displaying top 5 highest-rated recipes with `AnimatePresence` crossfade and pause-on-hover
 - [x] Frontend lint, typecheck, tests, and `next build` pass
 - [x] No fake stats, fake quotes, or hardcoded recipe counts remain
-- [x] Hero image renders cleanly; fallback works if image fails
+- [x] Hero image/carousel renders cleanly; fallback works if image fails
 - [x] Pantry quick input navigates to `/generator?ingredients=...` without auto-submitting
 - [x] Reduced motion disables all animations; page functional with JS disabled
-- [x] React Compiler rules strictly respected (no synchronous `setState` in `useEffect`)
+- [x] React Compiler rules strictly respected (no synchronous `setState` in `useEffect`, `setInterval` uses functional updater)
 - [x] Fully responsive across 375px, 768px, 1280px (no horizontal overflow)
 - [x] Backend, API contract, layout, and admin files untouched
 - [x] `git diff --name-only develop...HEAD` shows only allowed files
