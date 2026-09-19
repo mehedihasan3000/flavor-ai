@@ -125,7 +125,7 @@ Upgrade the FlavorAI Home Page (`/`) to provide a stunning, interactive, real-da
 ## 10-Commit Execution Plan
 
 - [x] **Commit 1**: `docs: add HOME_UPGRADE_PLAN.md` (goal, scope lock, page structure, dynamic vs static, real data, animation rules, a11y, DoD)
-- [ ] **Commit 2**: `fix(frontend): fix hero image and replace fake stats with real data`
+- [x] **Commit 2**: `fix(frontend): fix hero image and replace fake stats with real data`
 - [ ] **Commit 3**: `chore(frontend): install motion, add MotionProvider and Reveal component`
 - [ ] **Commit 4**: `feat(frontend): hero stagger and floating animations`
 - [ ] **Commit 5**: `feat(frontend): add AI tools showcase and How it works animations`
