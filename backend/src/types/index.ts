@@ -681,6 +681,104 @@ export type AdminCommentModerationInput = z.infer<typeof AdminCommentModerationI
 // UsePantryItemInput / PantrySearchQuery below. Other workstreams do not edit.
 // ---------------------------------------------------------------------------
 
+/** Frozen pantry/grocery categories (§1.1). `frozen` is storage form, not kind. */
+export const PANTRY_CATEGORY = [
+  "vegetables",
+  "fruits",
+  "meat",
+  "dairy",
+  "grains",
+  "spices",
+  "frozen",
+  "snacks",
+  "other",
+] as const;
+
+export const PantryCategory = z.enum(PANTRY_CATEGORY);
+
+export type PantryCategory = z.infer<typeof PantryCategory>;
+
+/**
+ * Parses a `YYYY-MM-DD` string into a UTC-midnight Date.
+ * Returns `null` for wrong format or impossible calendar dates (e.g. month 13).
+ */
+function parsePantryDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+/** `YYYY-MM-DD` string that is a real calendar date today or in the future. */
+const PantryExpiryDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expiry date must use YYYY-MM-DD format.")
+  .refine(
+    (value) => {
+      const date = parsePantryDate(value);
+      if (!date) return false;
+      const now = new Date();
+      const todayUTC = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+      );
+      return date.getTime() >= todayUTC.getTime();
+    },
+    { message: "Expiry date must be a valid calendar date today or in the future." },
+  );
+
+export const CreatePantryItemInput = z.object({
+  name: z.string().trim().min(1, "Ingredient name is required.").max(100),
+  quantity: z.number().nonnegative("Quantity must be 0 or greater."),
+  unit: z.string().trim().min(1, "Unit is required.").max(30),
+  category: PantryCategory,
+  expiryDate: PantryExpiryDate.nullable().optional(),
+  lowStockThreshold: z.number().nonnegative().nullable().optional(),
+  notes: z.string().trim().max(200).optional(),
+});
+
+export type CreatePantryItemInput = z.infer<typeof CreatePantryItemInput>;
+
+/** All fields optional — ownership + key recompute handled in the controller. */
+export const UpdatePantryItemInput = CreatePantryItemInput.partial();
+
+export type UpdatePantryItemInput = z.infer<typeof UpdatePantryItemInput>;
+
+/** Consume flow: conditional atomic decrement, never clamps to zero. */
+export const UsePantryItemInput = z.object({
+  quantity: z.number().positive("Quantity must be greater than 0."),
+});
+
+export type UsePantryItemInput = z.infer<typeof UsePantryItemInput>;
+
+/**
+ * Query-string boolean: accepts `?flag=true` / `?flag=false` (and real
+ * booleans). `z.coerce.boolean()` is deliberately avoided — `Boolean("false")`
+ * is `true`, so an explicit `?lowStock=false` would wrongly apply the filter.
+ */
+const QueryBoolean = z
+  .union([z.boolean(), z.enum(["true", "false"])])
+  .transform((value) => value === true || value === "true");
+
+export const PantrySearchQuery = PaginationQuery.extend({
+  category: PantryCategory.optional(),
+  q: z.string().max(200).optional(),
+  expiringWithinDays: z.coerce.number().int().min(1).max(365).optional(),
+  lowStock: QueryBoolean.optional(),
+});
+
+export type PantrySearchQuery = z.infer<typeof PantrySearchQuery>;
+
 // ---------------------------------------------------------------------------
 // MealPlan (Dev B) — Smart Meal Planning (FEATURES_TASKS.md §3)
 // status: active|archived + isFavorite flag; servings 1–20; slot uniqueness

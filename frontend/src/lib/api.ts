@@ -31,6 +31,11 @@ import type {
   MacroAdjustmentResult,
   PaginatedResult,
   PaginationQuery,
+  PantryItem,
+  CreatePantryItemInput,
+  UpdatePantryItemInput,
+  UsePantryItemInput,
+  PantrySearchQuery,
   PantryMatchResult,
   PantrySuggestionsInput,
   PantrySuggestionsResult,
@@ -620,6 +625,68 @@ export function adminDeleteComment(
 }
 
 // ─── Pantry (Dev A) — FEATURES_TASKS.md §2 — Dev A appends below ─────────────
+
+export function listPantryItems(
+  query: PantrySearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<PantryItem>> {
+  return request<PaginatedResult<PantryItem>>(`/pantry/items${toQueryString(query)}`, options);
+}
+
+export function listExpiringPantry(
+  query: PaginationQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<PantryItem>> {
+  return request<PaginatedResult<PantryItem>>(`/pantry/expiring${toQueryString(query)}`, options);
+}
+
+export async function createPantryItem(
+  input: CreatePantryItemInput,
+  options: RequestOptions = {},
+): Promise<PantryItem> {
+  const res = await request<{ item: PantryItem }>("/pantry/items", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.item;
+}
+
+export async function updatePantryItem(
+  id: string,
+  input: UpdatePantryItemInput,
+  options: RequestOptions = {},
+): Promise<PantryItem> {
+  const res = await request<{ item: PantryItem }>(`/pantry/items/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+  return res.item;
+}
+
+export function deletePantryItem(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/pantry/items/${id}`, {
+    ...options,
+    method: "DELETE",
+  });
+}
+
+export async function usePantryItem(
+  id: string,
+  input: UsePantryItemInput,
+  options: RequestOptions = {},
+): Promise<PantryItem> {
+  const res = await request<{ item: PantryItem }>(`/pantry/items/${id}/use`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.item;
+}
 
 // ─── MealPlan (Dev B) — FEATURES_TASKS.md §3 — Dev B appends below ────────────
 
