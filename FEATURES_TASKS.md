@@ -173,16 +173,16 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
 
 ### A1. Backend model + validation + shared utils
 
-- [ ] `backend/src/models/PantryItem.ts` — fields:
+- [x] `backend/src/models/PantryItem.ts` — fields:
       `userId (ObjectId ref User, index)`, `ingredientKey (string, indexed)`, `name`, `quantity (number ≥ 0)`,
       `unit (string ≤30)`, `category (enum §1.1)`, `expiryDate (Date|null)`, `lowStockThreshold (number|null)`,
       `notes (≤200)`, timestamps. Compound index `{ userId: 1, ingredientKey: 1, unit: 1 }`,
       single index `{ userId: 1, expiryDate: 1 }`. **No `userId` from client — always `req.user.id`.**
-- [ ] `backend/src/utils/ingredientKey.ts` — `normalizeIngredientKey()` per §1.1 + unit tests
+- [x] `backend/src/utils/ingredientKey.ts` — `normalizeIngredientKey()` per §1.1 + unit tests
       (`Tomato/tomatoes/Tomato` → one key; `chicken breast` ≠ `chicken thigh`).
-- [ ] `backend/src/utils/units.ts` — `convertQuantity`, `unitGroup`, `toBaseUnit` per §1.1 + unit tests
+- [x] `backend/src/utils/units.ts` — `convertQuantity`, `unitGroup`, `toBaseUnit` per §1.1 + unit tests
       (incl. `oz`/`lb` → `null`, incompatible `pcs`↔`g` → `null`).
-- [ ] Zod schemas in `backend/src/types/index.ts` inside `// ─── Pantry (Dev A) ───`:
+- [x] Zod schemas in `backend/src/types/index.ts` inside `// ─── Pantry (Dev A) ───`:
       `PantryCategory`, `CreatePantryItemInput` (name 1–100 sanitized, quantity ≥ 0, unit, category,
       expiryDate optional today-or-future, lowStockThreshold optional ≥ 0, notes optional sanitized ≤200),
       `UpdatePantryItemInput` (all optional), `UsePantryItemInput` (`{ quantity: positive number }`),
@@ -191,7 +191,7 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
 
 ### A2. Backend routes + controller + service
 
-- [ ] `backend/src/controllers/pantryController.ts`:
+- [x] `backend/src/controllers/pantryController.ts`:
       - `listItems` — filters: category exact; `q` regex-escaped via `utils/regex.ts`; `expiringWithinDays` →
         `expiryDate != null AND expiryDate <= today+N` (null expiries never match); `lowStock` →
         `lowStockThreshold != null AND quantity <= lowStockThreshold` (null threshold never flags).
@@ -205,32 +205,32 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
         `findOneAndUpdate({ _id, userId, quantity: { $gte: qty } }, { $inc: { quantity: -qty } })` →
         null means insufficient → 409 `CONFLICT` with `available` in the safeMessage; quantity can never go negative.
       - `expiringSoon` — `expiryDate != null`, sorted asc, limit 20, paginated envelope.
-- [ ] `backend/src/services/pantryService.ts` — `upsertPantryFromGrocery(userId, items)` for the §1.4 seam
+- [x] `backend/src/services/pantryService.ts` — `upsertPantryFromGrocery(userId, items)` for the §1.4 seam
       (convertible-unit merge, exact-duplicate sum, returns per-item results; skips + reports already-moved items).
-- [ ] `backend/src/routes/pantry.ts` — wire §1.2 rows with `requireAuth` + `validateBody`/`validateQuery`/
+- [x] `backend/src/routes/pantry.ts` — wire §1.2 rows with `requireAuth` + `validateBody`/`validateQuery`/
       **`validateParams` on every `:id` route**; export `pantryRouter`. **Do NOT mount in `v1.ts`** (Lead does it).
 - [ ] Low-stock flag is **derived** (`threshold != null && quantity <= threshold`), never stored.
 
 ### A3. Frontend (pages + components)
 
-- [ ] `frontend/src/lib/types.ts` + `api.ts` — append `PantryItem`, `CreatePantryItemInput`, `PantrySearchQuery`,
+- [x] `frontend/src/lib/types.ts` + `api.ts` — append `PantryItem`, `CreatePantryItemInput`, `PantrySearchQuery`,
       `listPantryItems()`, `createPantryItem()`, `updatePantryItem()`, `deletePantryItem()`, `usePantryItem()`, `listExpiringPantry()`.
-- [ ] `frontend/src/app/pantry/page.tsx` (behind `AuthGuard`): table/cards (name, qty+unit, category badge,
+- [x] `frontend/src/app/pantry/page.tsx` (behind `AuthGuard`): table/cards (name, qty+unit, category badge,
       expiry badge, low-stock badge), search input, category filter, "expiring soon" toggle, add/edit modal,
       +/- stepper, delete confirm, loading/error/empty states (empty: *"Your pantry is empty. Add your first ingredient…"*).
-- [ ] `components/pantry/use-these-soon.tsx` — "Use These Soon" section (from `GET /pantry/expiring`) with
+- [x] `components/pantry/use-these-soon.tsx` — "Use These Soon" section (from `GET /pantry/expiring`) with
       **"Find recipes"** button → links to `/generator` with the ingredient prefilled (query param, no new API).
-- [ ] Follow the React Compiler rule (§0.4.1); reuse `ui/*` states; mobile-friendly stepper (≥24px targets).
+- [x] Follow the React Compiler rule (§0.4.1); reuse `ui/*` states; mobile-friendly stepper (≥24px targets).
 
 ### A4. Tests (Dev A)
 
-- [ ] `tests/pantry.test.ts` (integration, `mongodb-memory-server`, `providerId` helper per §0.3.2):
+- [x] `tests/pantry.test.ts` (integration, `mongodb-memory-server`, `providerId` helper per §0.3.2):
       create / exact-duplicate-409 / convertible-unit-merge / update / use-decrements / use-insufficient-409 (qty unchanged) /
       delete / search+category filter / expiring sort (nulls excluded) / low-stock flag (null threshold never flags) /
       **cross-user 404 isolation (incl. admin)** / invalid quantity 400 / malformed `:id` 400.
-- [ ] `tests/ingredientKey.test.ts` + `tests/units.test.ts`: normalization cases incl. the must-split cases;
+- [x] `tests/ingredientKey.test.ts` + `tests/units.test.ts`: normalization cases incl. the must-split cases;
       conversion factors + `null` on incompatible/imperial.
-- [ ] Gate: `npm run build` ✓ · `npm run lint` (0 warnings) ✓ · `npx vitest run tests/pantry.test.ts tests/ingredientKey.test.ts tests/units.test.ts` ✓.
+- [x] Gate: `npm run build` ✓ · `npm run lint` (0 warnings) ✓ · `npx vitest run tests/pantry.test.ts tests/ingredientKey.test.ts tests/units.test.ts` ✓.
 
 ---
 

@@ -576,6 +576,57 @@ export interface AdminCommentModerationInput {
 // Dev A appends PantryItem / CreatePantryItemInput / PantrySearchQuery below.
 // Other workstreams do not edit.
 
+export type PantryCategory =
+  | "vegetables"
+  | "fruits"
+  | "meat"
+  | "dairy"
+  | "grains"
+  | "spices"
+  | "frozen"
+  | "snacks"
+  | "other";
+
+export interface PantryItem {
+  id: string;
+  userId: string;
+  ingredientKey: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+  expiryDate: string | null;
+  lowStockThreshold: number | null;
+  /** Derived server-side (`threshold != null && quantity <= threshold`). */
+  lowStock: boolean;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePantryItemInput {
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+  expiryDate?: string | null;
+  lowStockThreshold?: number | null;
+  notes?: string;
+}
+
+export type UpdatePantryItemInput = Partial<CreatePantryItemInput>;
+
+export interface UsePantryItemInput {
+  quantity: number;
+}
+
+export interface PantrySearchQuery extends PaginationQuery {
+  category?: PantryCategory;
+  q?: string;
+  expiringWithinDays?: number;
+  lowStock?: boolean;
+}
+
 // ─── MealPlan (Dev B) — Smart Meal Planning (FEATURES_TASKS.md §3) ───────────
 // Dev B appends MealPlan / MealPlanConstraints below. Other workstreams do not edit.
 
