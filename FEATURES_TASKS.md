@@ -209,7 +209,7 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
       (convertible-unit merge, exact-duplicate sum, returns per-item results; skips + reports already-moved items).
 - [x] `backend/src/routes/pantry.ts` — wire §1.2 rows with `requireAuth` + `validateBody`/`validateQuery`/
       **`validateParams` on every `:id` route**; export `pantryRouter`. **Do NOT mount in `v1.ts`** (Lead does it).
-- [ ] Low-stock flag is **derived** (`threshold != null && quantity <= threshold`), never stored.
+- [x] Low-stock flag is **derived** (`threshold != null && quantity <= threshold`), never stored.
 
 ### A3. Frontend (pages + components)
 
@@ -425,6 +425,34 @@ contract triple in sync (types ↔ contract doc ↔ frontend types) · no critic
 
 ## 9. Draft API appendix (dev scratch — Lead moves to `docs/API_CONTRACT.md` at integration)
 
-- [ ] **§9A (Dev A):** pantry endpoint proposals (shapes, query params, error cases) live here until merge.
+- [x] **§9A (Dev A):** pantry endpoint proposals (Lead moves to `docs/API_CONTRACT.md` at merge).
+  Base `/api/v1/pantry`, all `requireAuth` (`req.user.id` scope, no admin override).
+  Item shape: `{ id, userId, ingredientKey, name, quantity, unit, category,
+  expiryDate: ISO8601|null, lowStockThreshold: number|null,
+  lowStock: boolean (derived, never stored), notes, createdAt, updatedAt }`.
+  Lists use the paginated envelope `{ items, page, limit, total, totalPages }`.
+  Non-2xx use the frozen error envelope.
+  - `GET /pantry/items` — query: `category?` (PantryCategory), `q?` (≤200,
+    regex-escaped case-insensitive name match), `expiringWithinDays?` (int
+    1–365; dated items with `expiryDate <= today+N`, nulls never match),
+    `lowStock?` (`true`/`false`; threshold set AND `quantity <= threshold`),
+    `page`/`limit`. → 200 envelope, `createdAt` desc. 400/401.
+  - `POST /pantry/items` — body `CreatePantryItemInput` (name 1–100,
+    quantity ≥ 0, unit 1–30, category, expiryDate `YYYY-MM-DD` today-or-future,
+    lowStockThreshold ≥ 0, notes ≤200; name/notes/unit sanitized).
+    → 201 `{ item }`; exact `key+unit` duplicate → 409 (PATCH instead);
+    convertible-unit near-dup merges via `units.ts` → 200 `{ item }`. 400/401.
+  - `PATCH /pantry/items/:id` — body `UpdatePantryItemInput` (all optional;
+    rename recomputes `ingredientKey`; unit-only change converts stored qty,
+    400 when incompatible; explicit `null` clears expiry/threshold).
+    → 200 `{ item }`. 400 (malformed `:id`/body) / 404 (cross-user incl.
+    admin) / 409 (rename would fork a duplicate `key+unit` line).
+  - `DELETE /pantry/items/:id` → 200 `{ success: true }`. 400/404.
+  - `POST /pantry/items/:id/use` — body `UsePantryItemInput`
+    (`{ quantity: number > 0 }`); conditional atomic decrement, never negative.
+    → 200 `{ item }`. 400 / 404 / 409 insufficient with `Available: <qty unit>`
+    in the safeMessage (stored quantity untouched).
+  - `GET /pantry/expiring` — query `page`/`limit` (cap 20/page); dated items
+    only, `expiryDate` asc (overdue first). → 200 envelope. 401.
 - [ ] **§9B (Dev B):** meal-plan endpoint proposals live here until merge.
 - [ ] **§9C (Dev C):** grocery endpoint proposals live here until merge.
