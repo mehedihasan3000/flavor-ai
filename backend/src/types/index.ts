@@ -673,3 +673,25 @@ export const AdminCommentModerationInput = z.object({
 });
 
 export type AdminCommentModerationInput = z.infer<typeof AdminCommentModerationInput>;
+
+// ---------------------------------------------------------------------------
+// Pantry (Dev A) — Real Pantry Management (FEATURES_TASKS.md §2)
+// Frozen vocabulary: categories + units + YYYY-MM-DD UTC dates (§1.1).
+// Dev A appends PantryCategory / CreatePantryItemInput / UpdatePantryItemInput /
+// UsePantryItemInput / PantrySearchQuery below. Other workstreams do not edit.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// MealPlan (Dev B) — Smart Meal Planning (FEATURES_TASKS.md §3)
+// status: active|archived + isFavorite flag; servings 1–20; slot uniqueness
+// on (date, mealType); swap addressed by mealId (§1.1, §B1).
+// Dev B appends constraints / meal / create / update / AI-generate / swap schemas
+// below. Other workstreams do not edit.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Grocery (Dev C) — Smart Grocery System (FEATURES_TASKS.md §4)
+// Canonical base units via Dev-A utils/units.ts; no estimatedCost in v1 (§1.1).
+// Dev C appends Generate / Add / Update-item / Update-list inputs below.
+// Other workstreams do not edit.
+// ---------------------------------------------------------------------------
