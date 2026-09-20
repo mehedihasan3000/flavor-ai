@@ -571,3 +571,13 @@ export interface AdminCommentSearchQuery extends PaginationQuery {
 export interface AdminCommentModerationInput {
   moderationStatus: CommentStatus;
 }
+
+// ─── Pantry (Dev A) — Real Pantry Management (FEATURES_TASKS.md §2) ──────────
+// Dev A appends PantryItem / CreatePantryItemInput / PantrySearchQuery below.
+// Other workstreams do not edit.
+
+// ─── MealPlan (Dev B) — Smart Meal Planning (FEATURES_TASKS.md §3) ───────────
+// Dev B appends MealPlan / MealPlanConstraints below. Other workstreams do not edit.
+
+// ─── Grocery (Dev C) — Smart Grocery System (FEATURES_TASKS.md §4) ───────────
+// Dev C appends GroceryList / GroceryItem below. Other workstreams do not edit.

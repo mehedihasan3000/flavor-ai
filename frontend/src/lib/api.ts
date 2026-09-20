@@ -619,3 +619,9 @@ export function adminDeleteComment(
   return request<{ success: true }>(`/admin/comments/${id}`, { ...options, method: "DELETE" });
 }
 
+// ─── Pantry (Dev A) — FEATURES_TASKS.md §2 — Dev A appends below ─────────────
+
+// ─── MealPlan (Dev B) — FEATURES_TASKS.md §3 — Dev B appends below ────────────
+
+// ─── Grocery (Dev C) — FEATURES_TASKS.md §4 — Dev C appends below ─────────────
+
