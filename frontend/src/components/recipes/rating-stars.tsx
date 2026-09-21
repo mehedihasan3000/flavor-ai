@@ -76,7 +76,7 @@ export function RatingStars({
                 className="rounded-sm p-0.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Star
-                  className={`${starClass} ${filled ? "fill-amber-400" : "fill-border-strong"}`}
+                  className={`${starClass} ${filled ? "text-amber-400" : "text-border-strong"}`}
                   aria-hidden="true"
                 />
               </button>
@@ -105,15 +105,20 @@ export function RatingStars({
       <span className="relative inline-flex shrink-0" aria-hidden="true">
         <span className="flex gap-0.5">
           {STAR_INDEXES.map((i) => (
-            <Star key={i} className={`${starClass} fill-border-strong`} />
+            <Star key={i} className={`${starClass} shrink-0 text-border-strong`} />
           ))}
         </span>
+        {/* Fractional fill: overlay stars must keep their exact size (shrink-0)
+            so they align with the base row and get clipped by overflow-hidden.
+            Without it they squeeze into the percent width and the rows smear.
+            Colors use text-* (not fill-*): the Star path is fill="currentColor",
+            so only the CSS color property recolors it. */}
         <span
-          className="absolute inset-0 flex gap-0.5 overflow-hidden"
+          className="absolute left-0 top-0 flex h-full gap-0.5 overflow-hidden"
           style={{ width: `${percent}%` }}
         >
           {STAR_INDEXES.map((i) => (
-            <Star key={i} className={`${starClass} fill-amber-400`} />
+            <Star key={i} className={`${starClass} shrink-0 text-amber-400`} />
           ))}
         </span>
       </span>
