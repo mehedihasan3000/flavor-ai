@@ -200,24 +200,108 @@ CRITICAL INSTRUCTIONS:
 }
 
 /**
+ * Extracts the first balanced `{...}` JSON object using brace counting that
+ * is aware of string literals and escapes. Returns null when the payload is
+ * truncated (no balanced close) or contains no object at all.
+ */
+function extractBalancedJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === "{") {
+        depth += 1;
+      } else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return text.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Removes common non-JSON artefacts reasoning/vision models emit:
+ * trailing commas, JS-style comments. Deliberately does NOT rewrite
+ * single quotes (would corrupt apostrophes like "farmer's").
+ */
+function repairJsonArtefacts(json: string): string {
+  return json
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|\n)\s*\/\/[^\n]*/g, "$1")
+    .replace(/,(\s*[}\]])/g, "$1");
+}
+
+/**
  * Clean markdown code block formatting if present in raw model string output.
+ *
+ * Handles the failure modes actually observed from qwen vision models:
+ * - `<think>...</think>` reasoning dumps (can be larger than the JSON itself)
+ * - prose before/after the JSON ("Here is your analysis: ...")
+ * - fenced blocks anywhere in the text, not just at offset 0
+ * - trailing commas / comments that break strict JSON.parse
  */
 function cleanJsonResponse(raw: string): string {
   let cleaned = raw.trim();
   // Strip extended-thinking <think>...</think> blocks emitted by reasoning models
-  // (e.g. qwen/qwen3.6-27b). The block can be enormous, so strip greedily.
-  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  // Strip markdown code fences
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  // (e.g. qwen/qwen3.x). Also handle the <thinking> variant.
+  cleaned = cleaned
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .trim();
+  // Extract fenced code block wherever it appears ("Here is the JSON:\n```json...")
+  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch?.[1]?.trim()) {
+    cleaned = fenceMatch[1].trim();
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
   }
-  // Extract the first {...} JSON object if there is any leading/trailing prose
+  // Prefer a balanced-object extraction: immune to trailing prose and to
+  // merging two adjacent objects (first-{ to last-} would glue them together).
+  const balanced = extractBalancedJsonObject(cleaned);
+  if (balanced) {
+    return repairJsonArtefacts(balanced).trim();
+  }
+  // Fallback: first "{" to last "}" (may still be truncated — caller detects).
   const jsonStart = cleaned.indexOf("{");
   const jsonEnd = cleaned.lastIndexOf("}");
   if (jsonStart !== -1 && jsonEnd > jsonStart) {
-    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+    return repairJsonArtefacts(cleaned.slice(jsonStart, jsonEnd + 1)).trim();
   }
-  return cleaned.trim();
+  return repairJsonArtefacts(cleaned).trim();
+}
+
+/**
+ * Tries strict JSON.parse first, then the repaired variant.
+ * Returns the parsed value or throws — callers map this to a retryable 502.
+ */
+function tryParseModelJson(cleaned: string): unknown {
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // cleanJsonResponse already repairs; this second attempt only helps when
+    // the repair itself needs a second pass (nested trailing commas, etc.).
+    return JSON.parse(repairJsonArtefacts(cleaned));
+  }
 }
 
 /**
@@ -559,8 +643,9 @@ export function buildFoodPhotoAnalysisPrompt(
 Your task is to analyze the provided food photo or meal image with high accuracy, detecting foods/ingredients, estimating portion sizes, and computing nutritional values.
 
 CRITICAL INSTRUCTIONS:
-1. You MUST respond with ONLY a valid, raw JSON object. Do not include markdown code block formatting (e.g. no \`\`\`json).
-2. The JSON object must strictly match this exact structure:
+1. You MUST respond with ONLY a valid, raw, compact JSON object. No markdown fences, no <think> reasoning, no commentary before/after, no trailing commas. All numeric fields MUST be JSON numbers (never quoted strings).
+2. Keep the output COMPACT to fit the token budget: summary under 150 chars, healthInsights max 2 short items, suggestedIngredientsForRecipe max 6 items, detectedFoods max 6 items.
+3. The JSON object must strictly match this exact structure:
 {
   "dishName": "Grilled Salmon with Asparagus and Quinoa",
   "summary": "Grilled salmon fillet served with tender asparagus spears and seasoned quinoa.",
@@ -594,8 +679,9 @@ CRITICAL INSTRUCTIONS:
   "suggestedIngredientsForRecipe": ["salmon fillet", "asparagus", "olive oil", "lemon"],
   "disclaimer": "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice."
 }
-3. macroDistribution percentages MUST sum to approximately 100%.
-4. Allowed dietaryTags: "vegetarian", "vegan", "halal", "gluten-free", "dairy-free", "high-protein", "low-carb", "keto".`;
+4. macroDistribution percentages MUST sum to approximately 100%.
+5. Allowed dietaryTags: "vegetarian", "vegan", "halal", "gluten-free", "dairy-free", "high-protein", "low-carb", "keto".
+6. confidence MUST be exactly one of "high", "medium", "low" (lowercase).`;
 
   const details: string[] = [
     "Analyze this food photo. Estimate nutrition, detect ingredients, and calculate macros.",
@@ -653,13 +739,109 @@ export async function analyzeFoodPhoto(
   );
 
   const primaryModel = env.GROQ_MODEL_FOR_IMAGE || "qwen/qwen3.8-27b";
-  // Vision-capable models currently supported by Groq (per Groq vision docs):
-  // qwen/qwen3.6-27b + qwen/qwen3.8-27b. Retired and NOT retried:
-  // llama-3.2-11b/90b-vision-preview (shutdown Apr 2025),
-  // meta-llama/llama-4-scout-17b-16e-instruct (shutdown Jul 2026, free/dev tiers).
-  const candidateModels = [primaryModel, "qwen/qwen3.6-27b", "qwen/qwen3.8-27b"].filter(
+  // Live-verified 2026-09-21 against a free-tier key (GET /models + probes):
+  // - `qwen/qwen3.8-27b` serves vision, but REJECTS response_format=json_object
+  //   (400 "'messages' must contain the word 'json'..."), so it is always
+  //   called without response_format. The strict-JSON system prompt + server
+  //   Zod validation still apply downstream.
+  // - `qwen/qwen3.6-27b` is NOT on that key (404 model_not_found). It stays out
+  //   of the default path; keys with access can append it (or others) via
+  //   GROQ_IMAGE_FALLBACK_MODELS.
+  // Retired and never retried: llama-3.2-11b/90b-vision-preview,
+  // meta-llama/llama-4-scout-17b-16e-instruct.
+  const candidateModels = [primaryModel, ...env.GROQ_IMAGE_FALLBACK_MODELS].filter(
     (m, i, arr) => arr.indexOf(m) === i,
   );
+
+  /** Models probed to reject response_format=json_object — call plain only. */
+  const NO_JSON_FORMAT_MODELS = new Set(["qwen/qwen3.8-27b"]);
+
+  interface VisionAttempt {
+    model: string;
+    status: number | "network" | "empty-content";
+    note: string;
+  }
+  const attempts: VisionAttempt[] = [];
+  let sawRateLimit = false;
+
+  function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const abort = () =>
+        reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+      if (signal.aborted) {
+        abort();
+        return;
+      }
+      const id = setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      }, ms);
+      signal.addEventListener("abort", () => {
+        clearTimeout(id);
+        abort();
+      });
+    });
+  }
+
+  async function postChatCompletion(
+    model: string,
+    withJsonFormat: boolean,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const bodyPayload: Record<string, unknown> = {
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: userPrompt },
+            { type: "image_url", image_url: { url: formattedImageUrl } },
+          ],
+        },
+      ],
+            temperature: 0, // deterministic output reduces token waste on reasoning
+            // Free-tier OTPM cap is 1000 output tokens (Groq rejects larger
+            // max_tokens outright: "reduce max_tokens"). A full nutrition JSON
+            // is ~800 tokens, so use the whole budget — lower values truncate
+            // the JSON mid-object and fail Zod parsing downstream.
+            max_tokens: 1000,
+    };
+
+    if (withJsonFormat) {
+      bodyPayload.response_format = { type: "json_object" };
+    }
+
+    const send = () =>
+      fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        signal,
+        body: JSON.stringify(bodyPayload),
+      });
+
+    let res = await send();
+    // Free-tier image requests can burst past TPM limits: honor Retry-After
+    // once per attempt instead of burning the fallback chain on a transient.
+    if (res.status === 429) {
+      sawRateLimit = true;
+      const retryAfterSec = Number(res.headers.get("retry-after"));
+      const waitMs = Number.isFinite(retryAfterSec)
+        ? Math.min(Math.max(retryAfterSec * 1000, 1000), 10000)
+        : 5000;
+      attempts.push({
+        model,
+        status: 429,
+        note: `rate-limited, retrying once after ${Math.round(waitMs / 1000)}s`,
+      });
+      await sleepAbortable(waitMs, signal);
+      res = await send();
+    }
+    return res;
+  }
 
   const startTime = Date.now();
   const controller = new AbortController();
@@ -667,68 +849,52 @@ export async function analyzeFoodPhoto(
 
   let rawResponseText = "";
   let successfulModel = primaryModel;
-  let lastErrorMessage = "";
 
   try {
     for (const model of candidateModels) {
-      // First attempt with response_format json_object; if 400 json_validate_failed, retry without constraint
-      for (const useJsonFormat of [true, false]) {
+      const variants = NO_JSON_FORMAT_MODELS.has(model) ? [false] : [true, false];
+      for (const useJsonFormat of variants) {
+        let res: Response;
         try {
-          const bodyPayload: Record<string, unknown> = {
-            model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: userPrompt },
-                  { type: "image_url", image_url: { url: formattedImageUrl } },
-                ],
-              },
-            ],
-            temperature: 0,      // deterministic output reduces token waste on reasoning
-            max_tokens: 2048,     // cap prevents reasoning models (qwen) consuming entire budget on <think>
-          };
-
-          if (useJsonFormat) {
-            bodyPayload.response_format = { type: "json_object" };
-          }
-
-          const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            signal: controller.signal,
-            body: JSON.stringify(bodyPayload),
-          });
-
-          if (res.ok) {
-            const data = (await res.json()) as {
-              choices?: Array<{ message?: { content?: string } }>;
-            };
-            rawResponseText = data.choices?.[0]?.message?.content ?? "";
-            // Metadata-only: never dump the full model payload into normal logs.
-            console.debug(
-              `[aiService] Vision response received (model: ${model}, chars: ${rawResponseText.length})`,
-            );
-            if (rawResponseText.trim()) {
-              successfulModel = model;
-              break;
-            }
-          } else {
-            const errBody = await res.text().catch(() => "");
-            lastErrorMessage = `[${model}] HTTP ${res.status}: ${errBody}`;
-            // If json_validate_failed, try next loop without response_format constraint
-            if (res.status === 400 && errBody.includes("json_validate_failed") && useJsonFormat) {
-              continue;
-            }
-          }
+          res = await postChatCompletion(model, useJsonFormat, controller.signal);
         } catch (fetchErr) {
           if ((fetchErr as Error)?.name === "AbortError") throw fetchErr;
-          lastErrorMessage = (fetchErr as Error)?.message || "Network error";
+          attempts.push({
+            model,
+            status: "network",
+            note: (fetchErr as Error)?.message || "Network error",
+          });
+          continue;
         }
+
+        if (res.ok) {
+          const data = (await res.json()) as {
+            choices?: Array<{ message?: { content?: string } }>;
+          };
+          rawResponseText = data.choices?.[0]?.message?.content ?? "";
+          // Metadata-only: never dump the full model payload into normal logs.
+          console.debug(
+            `[aiService] Vision response received (model: ${model}, chars: ${rawResponseText.length})`,
+          );
+          if (rawResponseText.trim()) {
+            successfulModel = model;
+            break;
+          }
+          attempts.push({
+            model,
+            status: "empty-content",
+            note: useJsonFormat ? "json_format variant empty" : "plain variant empty",
+          });
+          continue;
+        }
+
+        const errBody = await res.text().catch(() => "");
+        attempts.push({ model, status: res.status, note: errBody.slice(0, 300) });
+        if (res.status === 401 || res.status === 403 || res.status === 404) {
+          break; // access/config dead-end — the other variant can't help
+        }
+        // 400 (incl. json_validate_failed / response_format complaints) and 5xx:
+        // fall through to the next variant.
       }
 
       if (rawResponseText.trim()) {
@@ -739,16 +905,29 @@ export async function analyzeFoodPhoto(
     clearTimeout(timeoutId);
 
     if (!rawResponseText.trim()) {
-      console.error(`[aiService] Food photo analysis failed across candidate models: ${lastErrorMessage}`);
+      console.error(
+        `[aiService] Food photo analysis failed. Attempts: ${JSON.stringify(attempts)}`,
+      );
       const latencyMs = Date.now() - startTime;
+      const configDead = attempts.some(
+        (a) => a.status === 401 || a.status === 403 || a.status === 404,
+      );
+      const rateLimitedOnly = sawRateLimit && !configDead;
       await logAIGeneration({
         userId,
         input: { mealContext: input.mealContext, filename: input.filename },
         model: primaryModel,
         status: "failed",
         latencyMs,
-        errorCategory: "provider_error",
+        errorCategory: rateLimitedOnly ? "rate_limit" : "provider_error",
       });
+      if (rateLimitedOnly) {
+        throw new ApiError(
+          429,
+          "RATE_LIMITED",
+          "AI image analysis is busy right now. Please wait a moment and try again.",
+        );
+      }
       throw new ApiError(
         502,
         "AI_PROVIDER_ERROR",
@@ -794,8 +973,18 @@ export async function analyzeFoodPhoto(
   let parsedJson: unknown;
 
   try {
-    parsedJson = JSON.parse(cleanedJson);
+    parsedJson = tryParseModelJson(cleanedJson);
   } catch {
+    // Distinguish truncation (balanced extraction failed → JSON cut off by
+    // max_tokens) from genuinely malformed output so the message is actionable.
+    const looksTruncated =
+      extractBalancedJsonObject(cleanedJson) === null && cleanedJson.includes("{");
+    console.error(
+      `[aiService] Food photo JSON.parse failed (model: ${successfulModel}, ` +
+        `rawChars: ${rawResponseText.length}, cleanedChars: ${cleanedJson.length}, ` +
+        `truncated: ${looksTruncated}). Raw preview: ${rawResponseText.slice(0, 500)} ` +
+        `| Cleaned preview: ${cleanedJson.slice(0, 500)}`,
+    );
     await logAIGeneration({
       userId,
       input: { mealContext: input.mealContext, filename: input.filename },
@@ -807,13 +996,25 @@ export async function analyzeFoodPhoto(
     throw new ApiError(
       502,
       "AI_PROVIDER_ERROR",
-      "AI returned invalid nutrition analysis data format.",
+      looksTruncated
+        ? "AI response was cut off before completing. Please try again with a clearer photo."
+        : "AI returned invalid nutrition analysis data format.",
     );
   }
 
-  // Pre-normalize common model quirks before Zod validation
+  // Pre-normalize common model quirks before Zod validation.
+  // Vision models frequently return numbers as strings ("280"), confidence in
+  // mixed case ("High"), or single objects where arrays are expected.
   if (typeof parsedJson === "object" && parsedJson !== null) {
     const rawObj = parsedJson as Record<string, unknown>;
+    const toNonNegativeNumber = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) return v;
+      if (typeof v === "string" && v.trim() !== "") {
+        const n = Number(v.replace(/,/g, "").trim());
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+      return null;
+    };
 
     // 1. Default disclaimer if missing or empty
     if (!rawObj.disclaimer || typeof rawObj.disclaimer !== "string" || !rawObj.disclaimer.trim()) {
@@ -826,26 +1027,87 @@ export async function analyzeFoodPhoto(
       rawObj.summary = "";
     }
 
-    // 3. Compute macroDistribution from totalNutrition when missing or incomplete
+    // 3. Normalize detectedFoods: coerce numeric strings, fix confidence casing
+    if (Array.isArray(rawObj.detectedFoods)) {
+      for (const item of rawObj.detectedFoods) {
+        if (typeof item !== "object" || item === null) continue;
+        const food = item as Record<string, unknown>;
+        for (const key of [
+          "calories",
+          "proteinGrams",
+          "carbsGrams",
+          "fatGrams",
+          "fiberGrams",
+        ]) {
+          if (key in food && typeof food[key] !== "number") {
+            const coerced = toNonNegativeNumber(food[key]);
+            if (coerced !== null) food[key] = coerced;
+            else if (key !== "fiberGrams") food[key] = 0;
+            else delete food[key];
+          }
+        }
+        if (typeof food.confidence === "string") {
+          const c = food.confidence.toLowerCase().trim();
+          food.confidence =
+            c === "high" || c === "medium" || c === "low" ? c : "medium";
+        } else if (food.confidence == null) {
+          food.confidence = "medium";
+        }
+        if (typeof food.portion !== "string" || !food.portion.trim()) {
+          food.portion = "1 serving";
+        }
+      }
+    }
+
+    // 4. Normalize totalNutrition ranges: coerce numeric strings
+    if (typeof rawObj.totalNutrition === "object" && rawObj.totalNutrition !== null) {
+      const tn = rawObj.totalNutrition as Record<string, unknown>;
+      for (const key of ["calories", "proteinGrams", "carbsGrams", "fatGrams", "fiberGrams"]) {
+        const range = tn[key] as Record<string, unknown> | undefined;
+        if (typeof range === "object" && range !== null) {
+          for (const bound of ["min", "max", "estimate"]) {
+            if (bound in range && typeof range[bound] !== "number") {
+              const coerced = toNonNegativeNumber(range[bound]);
+              if (coerced !== null) range[bound] = coerced;
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Compute macroDistribution from totalNutrition when missing or incomplete,
+    //    coercing any numeric strings first.
+    const macro = rawObj.macroDistribution as Record<string, unknown> | undefined;
     const hasMacro =
-      rawObj.macroDistribution !== null &&
-      typeof rawObj.macroDistribution === "object" &&
-      typeof (rawObj.macroDistribution as Record<string, unknown>).proteinPercentage === "number";
+      macro !== null &&
+      typeof macro === "object" &&
+      typeof macro.proteinPercentage === "number";
 
     if (!hasMacro && typeof rawObj.totalNutrition === "object" && rawObj.totalNutrition !== null) {
-      const tn = rawObj.totalNutrition as Record<string, Record<string, number>>;
-      const protein = (tn.proteinGrams?.estimate ?? 0) * 4;
-      const carbs = (tn.carbsGrams?.estimate ?? 0) * 4;
-      const fat = (tn.fatGrams?.estimate ?? 0) * 9;
+      const tn = rawObj.totalNutrition as Record<string, Record<string, unknown>>;
+      const num = (v: unknown): number => {
+        const n = toNonNegativeNumber(v);
+        return n ?? 0;
+      };
+      const protein = num(tn.proteinGrams?.estimate) * 4;
+      const carbs = num(tn.carbsGrams?.estimate) * 4;
+      const fat = num(tn.fatGrams?.estimate) * 9;
       const total = protein + carbs + fat || 1;
       rawObj.macroDistribution = {
         proteinPercentage: Math.round((protein / total) * 100),
         carbsPercentage: Math.round((carbs / total) * 100),
         fatPercentage: Math.round((fat / total) * 100),
       };
+    } else if (hasMacro && macro) {
+      for (const k of ["proteinPercentage", "carbsPercentage", "fatPercentage"]) {
+        if (typeof macro[k] !== "number") {
+          const coerced = toNonNegativeNumber(macro[k]);
+          if (coerced !== null) macro[k] = Math.min(100, Math.max(0, coerced));
+        }
+      }
     }
 
-    // 4. Normalize dietaryTags — strip any values outside the allowed enum
+    // 6. Normalize dietaryTags — strip any values outside the allowed enum
     const validLabels = new Set([
       "vegetarian",
       "vegan",
@@ -864,7 +1126,7 @@ export async function analyzeFoodPhoto(
       rawObj.dietaryTags = [];
     }
 
-    // 5. Default empty arrays for other optional array fields
+    // 7. Default empty arrays for other optional array fields
     if (!Array.isArray(rawObj.allergenWarnings)) rawObj.allergenWarnings = [];
     if (!Array.isArray(rawObj.healthInsights)) rawObj.healthInsights = [];
     if (!Array.isArray(rawObj.suggestedIngredientsForRecipe))

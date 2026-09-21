@@ -1,1 +1,12 @@
 .vercel
+node_modules/
+dist/
+.env
+.env.local
+# Never deploy stale compiled output next to the serverless source.
+# Vercel builds api/index.ts itself; checked-in .js/.d.ts/.map files go stale
+# and can shadow the fresh build.
+api/*.js
+api/*.js.map
+api/*.d.ts
+api/*.d.ts.map

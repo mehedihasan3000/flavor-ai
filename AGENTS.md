@@ -116,7 +116,7 @@ Issuer/audience/expiry/refresh/logout policy per SRS §9.4.
 
 ## AI Rules
 
-- Groq models `openai/gpt-oss-120b` / `qwen/qwen3.6-27b`. Constrained prompts
+- Groq models `openai/gpt-oss-120b` (text) / `qwen/qwen3.8-27b` (vision; plain calls only — it rejects `response_format: json_object`; free-tier `max_tokens` ≤1000). `qwen/qwen3.6-27b` 404s on keys without access — never hardcode it as a default fallback. Constrained prompts
   enforcing strict JSON; **server-side Zod-validate ALL AI output — invalid output
   must NOT be stored** (FR-AI-07). On provider failure/timeout return a safe,
   retryable error, never leak internals (FR-AI-08). Timeout ≤30s. Pantry matching:

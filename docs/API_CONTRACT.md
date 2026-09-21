@@ -245,7 +245,7 @@ contract had no endpoint.
 }
 ```
 
-**Failure handling:** timeout ≤60s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable. The photo-nutrition route accepts JSON bodies up to 15 MB (≈10 MB decoded image; 10–15 MB originals are client-compressed).
+**Failure handling:** timeout ≤60s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable. Provider congestion on the vision call → 429 `RATE_LIMITED` ("busy, try again shortly"). The photo-nutrition route accepts JSON bodies up to 15 MB (≈10 MB decoded image; 10–15 MB originals are client-compressed).
 
 ---
 

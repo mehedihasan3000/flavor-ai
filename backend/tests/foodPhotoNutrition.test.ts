@@ -237,26 +237,20 @@ describe("Food Photo Nutrition Analysis (FR-PHOTO-01..04)", () => {
       ).rejects.toThrow(/Food photo nutrition analysis service unavailable/i);
     });
 
-    it("retries only live Groq vision models (no retired llama previews)", async () => {
+    it("calls the primary vision model plain-only (qwen3.8 rejects response_format)", async () => {
       const smallBase64 = Buffer.from("fake-png-data").toString("base64");
-      const seenModels: string[] = [];
-      let firstModel: string | null = null;
 
-      const mockFetch = vi.fn().mockImplementation(async (_url: unknown, init?: { body?: string }) => {
-        const body = JSON.parse(init?.body ?? "{}") as { model?: string };
-        const model = body.model ?? "";
-        seenModels.push(model);
-        if (firstModel === null) firstModel = model;
-        // Simulate the primary model being rejected; any fallback succeeds.
-        if (model === firstModel) {
-          return { ok: false, status: 404, text: async () => "model_not_found" };
-        }
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [{ message: { content: JSON.stringify(mockAnalysisResult) } }],
-          }),
-        };
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify(mockAnalysisResult),
+              },
+            },
+          ],
+        }),
       });
       global.fetch = mockFetch as unknown as typeof fetch;
       const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
@@ -266,16 +260,104 @@ describe("Food Photo Nutrition Analysis (FR-PHOTO-01..04)", () => {
       });
 
       expect(result.dishName).toBe("Grilled Salmon with Asparagus and Quinoa");
-      // A fallback to a *different* model must have happened…
-      expect(new Set(seenModels).size).toBeGreaterThan(1);
-      // …and every model attempted is a live Groq vision model.
-      for (const model of seenModels) {
-        expect(model).toMatch(/^qwen\/qwen3\.[68]-27b$/);
-      }
+      // Live-probed: qwen3.8 400s on response_format, so exactly one plain call.
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const sentBody = JSON.parse(
+        (mockFetch.mock.calls[0][1] as { body?: string })?.body ?? "{}",
+      ) as Record<string, unknown>;
+      expect(sentBody).not.toHaveProperty("response_format");
       // Success-path log carries metadata only — never the raw model payload.
       for (const call of debugSpy.mock.calls) {
         expect(JSON.stringify(call)).not.toContain("Grilled Salmon with Asparagus and Quinoa");
       }
+    });
+
+    it("retries once after a 429 then succeeds", async () => {
+      const smallBase64 = Buffer.from("fake-png-data").toString("base64");
+      let calls = 0;
+
+      const mockFetch = vi.fn().mockImplementation(async () => {
+        calls++;
+        if (calls === 1) {
+          return {
+            ok: false,
+            status: 429,
+            headers: { get: () => "0" },
+            text: async () => "rate_limited",
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify(mockAnalysisResult) } }],
+          }),
+        };
+      });
+      global.fetch = mockFetch as unknown as typeof fetch;
+
+      const result = await aiService.analyzeFoodPhoto({
+        image: `data:image/png;base64,${smallBase64}`,
+      });
+
+      expect(result.dishName).toBe("Grilled Salmon with Asparagus and Quinoa");
+      expect(calls).toBe(2);
+    });
+
+    it("maps 429-only exhaustion to RATE_LIMITED (not generic 502)", async () => {
+      const smallBase64 = Buffer.from("fake-png-data").toString("base64");
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        headers: { get: () => "0" },
+        text: async () => "rate_limited",
+      });
+      global.fetch = mockFetch as unknown as typeof fetch;
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      try {
+        await aiService.analyzeFoodPhoto({
+          image: `data:image/png;base64,${smallBase64}`,
+        });
+        expect.unreachable("should have thrown");
+      } catch (err: unknown) {
+        expect((err as { status?: number }).status).toBe(429);
+        expect((err as Error).message).toMatch(/busy/i);
+      }
+    });
+
+    it("walks GROQ_IMAGE_FALLBACK_MODELS and logs every attempt on total failure", async () => {
+      process.env.GROQ_IMAGE_FALLBACK_MODELS = "fallback-vision-1";
+      vi.resetModules();
+      const fresh = await import("../src/services/aiService.js");
+      delete process.env.GROQ_IMAGE_FALLBACK_MODELS;
+
+      const seenModels: string[] = [];
+      const mockFetch = vi.fn().mockImplementation(async (_url: unknown, init?: { body?: string }) => {
+        const body = JSON.parse(init?.body ?? "{}") as { model?: string };
+        seenModels.push(body.model ?? "");
+        if ((body.model ?? "").includes("fallback")) {
+          return { ok: false, status: 500, text: async () => "boom" };
+        }
+        return { ok: false, status: 404, text: async () => "model_not_found" };
+      });
+      global.fetch = mockFetch as unknown as typeof fetch;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await expect(
+        fresh.analyzeFoodPhoto({
+          image: `data:image/png;base64,${Buffer.from("fake-png-data").toString("base64")}`,
+        }),
+      ).rejects.toThrow(/service unavailable/i);
+
+      // Primary 404s (inner variant skipped — access dead-end), fallback attempted.
+      expect(seenModels[0]).not.toBe("fallback-vision-1");
+      expect(seenModels).toContain("fallback-vision-1");
+      // Failure log names EVERY attempt — the old last-error-only log hid this.
+      const logged = errorSpy.mock.calls.map((c) => JSON.stringify(c)).join(" ");
+      expect(logged).toContain(seenModels[0]);
+      expect(logged).toContain("fallback-vision-1");
+      expect(logged).toContain("404");
     });
   });
 
