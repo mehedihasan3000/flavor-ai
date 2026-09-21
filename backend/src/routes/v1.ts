@@ -13,6 +13,8 @@ import { assistantRouter } from "./assistant.js";
 import { dietRouter } from "./diet.js";
 import { recipesRouter } from "./recipes.js";
 import { uploadRouter } from "./upload.js";
+import { pantryRouter } from "./pantry.js";
+import { groceryListsRouter } from "./groceryLists.js";
 
 export const v1Router = Router();
 
@@ -48,3 +50,6 @@ v1Router.use("/ai", aiRouter);
 v1Router.use("/upload", uploadRouter);
 v1Router.use("/diet", dietRouter);
 v1Router.use("/assistant", assistantRouter);
+v1Router.use("/pantry", pantryRouter);
+v1Router.use("/grocery-lists", groceryListsRouter);
+

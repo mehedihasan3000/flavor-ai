@@ -22,6 +22,8 @@ import { env } from "../src/config/env.js";
 import { AIGenerationLogModel } from "../src/models/AIGenerationLog.js";
 import { CommentModel } from "../src/models/Comment.js";
 import { FavoriteModel } from "../src/models/Favorite.js";
+import { GroceryListModel } from "../src/models/GroceryList.js";
+import { PantryItemModel } from "../src/models/PantryItem.js";
 import { RatingModel } from "../src/models/Rating.js";
 import { RecipeModel } from "../src/models/Recipe.js";
 import { UserModel } from "../src/models/User.js";
@@ -45,6 +47,8 @@ async function syncAllIndexes(): Promise<void> {
     { name: "Comment", model: CommentModel },
     { name: "Favorite", model: FavoriteModel },
     { name: "AIGenerationLog", model: AIGenerationLogModel },
+    { name: "PantryItem", model: PantryItemModel },
+    { name: "GroceryList", model: GroceryListModel },
   ];
 
   for (const { name, model } of modelsToSync) {

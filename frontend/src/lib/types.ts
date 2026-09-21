@@ -632,3 +632,64 @@ export interface PantrySearchQuery extends PaginationQuery {
 
 // ─── Grocery (Dev C) — Smart Grocery System (FEATURES_TASKS.md §4) ───────────
 // Dev C appends GroceryList / GroceryItem below. Other workstreams do not edit.
+
+export type GroceryListStatus = "active" | "archived";
+
+export interface GroceryItem {
+  _id: string;
+  ingredientKey: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+  sourceRecipeIds: string[];
+  isPurchased: boolean;
+  isManual: boolean;
+  estimated: boolean;
+  movedToPantry: boolean;
+}
+
+export interface GroceryList {
+  _id: string;
+  userId: string;
+  mealPlanId?: string | null;
+  name: string;
+  budget?: number | null;
+  status: GroceryListStatus;
+  items: GroceryItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateGroceryInput {
+  mealPlanId: string;
+}
+
+export interface AddGroceryItemInput {
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+}
+
+export interface UpdateGroceryItemInput {
+  quantity?: number;
+  unit?: string;
+  category?: PantryCategory;
+  isPurchased?: boolean;
+}
+
+export interface UpdateGroceryListInput {
+  name?: string;
+  budget?: number | null;
+  status?: GroceryListStatus;
+}
+
+export interface PurchasedToPantryInput {
+  itemIds: string[];
+}
+
+export interface GroceryListSearchQuery extends PaginationQuery {
+  status?: GroceryListStatus;
+}
+

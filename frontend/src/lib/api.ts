@@ -49,6 +49,12 @@ import type {
   UpdateProfileInput,
   UpdateRecipeInput,
   UserProfile,
+  GroceryList,
+  GenerateGroceryInput,
+  AddGroceryItemInput,
+  UpdateGroceryItemInput,
+  UpdateGroceryListInput,
+  GroceryListSearchQuery,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:4000/api/v1";
@@ -692,3 +698,120 @@ export async function usePantryItem(
 
 // ─── Grocery (Dev C) — FEATURES_TASKS.md §4 — Dev C appends below ─────────────
 
+export function listGroceryLists(
+  query: GroceryListSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<GroceryList>> {
+  return request<PaginatedResult<GroceryList>>(`/grocery-lists${toQueryString(query)}`, options);
+}
+
+export function getGroceryList(
+  id: string,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}`, options);
+}
+
+export function generateGroceryList(
+  input: GenerateGroceryInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>("/grocery-lists/generate", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export function recalculateGroceryList(
+  id: string,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/recalculate`, {
+    ...options,
+    method: "POST",
+    body: {},
+  });
+}
+
+export function updateGroceryList(
+  id: string,
+  input: UpdateGroceryListInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function addGroceryItem(
+  id: string,
+  input: AddGroceryItemInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/items`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export function updateGroceryItem(
+  id: string,
+  itemId: string,
+  input: UpdateGroceryItemInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/items/${itemId}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function markPurchased(
+  id: string,
+  itemId: string,
+  isPurchased: boolean,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return updateGroceryItem(id, itemId, { isPurchased }, options);
+}
+
+export function deleteGroceryItem(
+  id: string,
+  itemId: string,
+  options: RequestOptions = {},
+): Promise<{ message: string }> {
+  return request<{ message: string }>(`/grocery-lists/${id}/items/${itemId}`, {
+    ...options,
+    method: "DELETE",
+  });
+}
+
+export function clearPurchased(
+  id: string,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/clear-purchased`, {
+    ...options,
+    method: "POST",
+  });
+}
+
+export function purchasedToPantry(
+  id: string,
+  itemIds: string[],
+  options: RequestOptions = {},
+): Promise<{ results: Array<{ groceryItemId: string; status: string }>; list: GroceryList }> {
+  return request<{ results: Array<{ groceryItemId: string; status: string }>; list: GroceryList }>(
+    `/grocery-lists/${id}/purchased-to-pantry`,
+    {
+      ...options,
+      method: "POST",
+      body: { itemIds },
+    },
+  );
+}

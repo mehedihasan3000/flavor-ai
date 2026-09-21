@@ -321,52 +321,52 @@ fixtures until A/B land; import `normalizeIngredientKey` + `units.ts` from Dev A
 
 ### C1. Pure logic first (`backend/src/services/groceryService.ts` — zero DB, zero AI, fully unit-tested)
 
-- [ ] `consolidateRequirements(meals: [{ ingredients: [{name,quantity?,unit?}], servingsScale }]): ConsolidatedItem[]`
+- [x] `consolidateRequirements(meals: [{ ingredients: [{name,quantity?,unit?}], servingsScale }]): ConsolidatedItem[]`
       (`{ key, name, quantity, unit /* canonical base unit */, category?, sourceRecipeIds[], estimated }`) —
       key = `normalizeIngredientKey(name)+'|'+toBaseUnit(unit).base` (unknown/imperial units: `key+'|'+rawUnit`,
       never merged across units); scale `quantity × servingsScale`; sum same-key;
       missing quantity → `quantity: 1, unit: 'pcs', estimated: true`; **never merge incompatible units** (`pcs` vs `g` stay separate lines).
-- [ ] `subtractPantry(requirements, pantryItems): { toBuy: ConsolidatedItem[], covered: ConsolidatedItem[] }` —
+- [x] `subtractPantry(requirements, pantryItems): { toBuy: ConsolidatedItem[], covered: ConsolidatedItem[] }` —
       `toBuy = max(0, required − pantry)` per key+convertible-unit (via Dev-A `units.ts`; `null` = incompatible =
       no subtraction); fully-covered items excluded from `toBuy` but listed under `covered` for transparency.
       **This exact formula powers §5.**
-- [ ] `categorize(name): Category` — keyword map over the item name (extendable constant, no AI call, §1.1 precedence rule).
+- [x] `categorize(name): Category` — keyword map over the item name (extendable constant, no AI call, §1.1 precedence rule).
 
 ### C2. Backend model + routes
 
-- [ ] `backend/src/models/GroceryList.ts` — `userId (index)`, `mealPlanId (ObjectId ref MealPlan|null)`,
+- [x] `backend/src/models/GroceryList.ts` — `userId (index)`, `mealPlanId (ObjectId ref MealPlan|null)`,
       `name`, `budget? (≥0, display only)`, `status: active|archived (default active)`,
       `items[]` `{ ingredientKey, name (sanitized), quantity, unit, category, sourceRecipeIds[], isPurchased (default false), isManual (default false), estimated (default false), movedToPantry (default false) }`,
       timestamps. Index `{ userId: 1, createdAt: -1 }`.
       (No `estimatedCost` in v1 — reserved for Phase 4 with real price data; never fabricated. See §6.)
-- [ ] Zod in `// ─── Grocery (Dev C) ───`: `GenerateGroceryInput` (`{ mealPlanId: ObjectIdString }`),
+- [x] Zod in `// ─── Grocery (Dev C) ───`: `GenerateGroceryInput` (`{ mealPlanId: ObjectIdString }`),
       `AddGroceryItemInput`, `UpdateGroceryItemInput` (`quantity? ≥ 0`, `unit?`, `category?`, `isPurchased?`),
       `UpdateGroceryListInput` (`name?, budget?, status?`).
-- [ ] `backend/src/controllers/groceryController.ts`:
+- [x] `backend/src/controllers/groceryController.ts`:
       - `generateFromMealPlan` — **single-query** recipe load (§0.3.10), scale, consolidate, subtract pantry, save.
       - `recalculate` (body `{}`) — re-run math, **preserve** `isManual` items verbatim + `isPurchased`/`movedToPantry`
         flags matched by **`ingredientKey`+canonical unit** (never bare key — a `500g` flag must not leak onto a `2pcs` line).
       - `addManualItem`, `updateItem`, `deleteItem`, `clearPurchased`, `purchasedToPantry`
         (calls Dev-A `upsertPantryFromGrocery`, never the model — §1.4).
-- [ ] `backend/src/routes/groceryLists.ts` — wire §1.2 rows with `requireAuth` + `validateParams`; **do NOT mount** (Lead does it).
+- [x] `backend/src/routes/groceryLists.ts` — wire §1.2 rows with `requireAuth` + `validateParams`; **do NOT mount** (Lead does it).
 
 ### C3. Frontend
 
-- [ ] `lib/types.ts` + `api.ts` — `GroceryList`, `GroceryItem`, `generateGroceryList()`, `recalculateGroceryList()`,
+- [x] `lib/types.ts` + `api.ts` — `GroceryList`, `GroceryItem`, `generateGroceryList()`, `recalculateGroceryList()`,
       `clearPurchased()`, item CRUD + `markPurchased()`, `purchasedToPantry(itemIds)`.
-- [ ] `frontend/src/app/grocery/page.tsx` (list) + `frontend/src/app/grocery/[id]/page.tsx` (checklist grouped by
+- [x] `frontend/src/app/grocery/page.tsx` (list) + `frontend/src/app/grocery/[id]/page.tsx` (checklist grouped by
       category: checkbox persists `isPurchased`, qty edit, manual-add input, clear-purchased, recalculate button,
       "Add purchased to pantry" explicit button with item selection, covered-by-pantry note, budget line
       showing `budget` vs item count only — no cost claims). Mobile-first checklist.
-- [ ] Entry from meal-plan detail (`/grocery?plan=<id>` pre-selects plan in the generate form — §0.4.2).
+- [x] Entry from meal-plan detail (`/grocery?plan=<id>` pre-selects plan in the generate form — §0.4.2).
 
 ### C4. Tests (Dev C)
 
-- [ ] `tests/groceryMath.test.ts` (pure, no DB): 1+2+3 onions → 6; 1kg − 600g → 400g; fully-covered excluded + listed under `covered`;
+- [x] `tests/groceryMath.test.ts` (pure, no DB): 1+2+3 onions → 6; 1kg − 600g → 400g; fully-covered excluded + listed under `covered`;
       incompatible units not merged; imperial never merged; servings scaling; `estimated` flag on missing qty; category grouping.
-- [ ] `tests/grocery.test.ts` (integration): generate from plan (single-query), recalculate after plan change preserves manual
+- [x] `tests/grocery.test.ts` (integration): generate from plan (single-query), recalculate after plan change preserves manual
       items + purchased flags per key+unit, purchased→pantry upsert + idempotent double-POST, cross-user 404, invalid ids 400/404.
-- [ ] Gate: build ✓ · lint ✓ · both suites ✓.
+- [x] Gate: build ✓ · lint ✓ · both suites ✓.
 
 ---
 

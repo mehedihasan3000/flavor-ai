@@ -790,6 +790,70 @@ export type PantrySearchQuery = z.infer<typeof PantrySearchQuery>;
 // ---------------------------------------------------------------------------
 // Grocery (Dev C) — Smart Grocery System (FEATURES_TASKS.md §4)
 // Canonical base units via Dev-A utils/units.ts; no estimatedCost in v1 (§1.1).
-// Dev C appends Generate / Add / Update-item / Update-list inputs below.
-// Other workstreams do not edit.
+// Dev C appends status enum + Generate / Add / Update-item / Update-list /
+// Purchased-to-pantry inputs below. Other workstreams do not edit.
 // ---------------------------------------------------------------------------
+
+/** Grocery list lifecycle: active shopping vs archived history. */
+export const GROCERY_LIST_STATUS = ["active", "archived"] as const;
+
+export type GroceryListStatus = (typeof GROCERY_LIST_STATUS)[number];
+
+/**
+ * Generate a grocery list from a meal plan (body `GenerateGroceryInput
+ * { mealPlanId }`). Scaling, consolidation, and pantry subtraction run
+ * deterministically in `services/groceryService.ts` — never via the LLM.
+ */
+export const GenerateGroceryInput = z.object({
+  mealPlanId: ObjectIdString,
+});
+
+export type GenerateGroceryInput = z.infer<typeof GenerateGroceryInput>;
+
+/** Manual (non-plan) grocery item. `isManual: true` is set server-side. */
+export const AddGroceryItemInput = z.object({
+  name: z.string().trim().min(1, "Item name is required.").max(100),
+  quantity: z.number().nonnegative("Quantity must be 0 or greater."),
+  unit: z.string().trim().min(1, "Unit is required.").max(30),
+  category: PantryCategory,
+});
+
+export type AddGroceryItemInput = z.infer<typeof AddGroceryItemInput>;
+
+/**
+ * Item edits: quantity, unit, category, purchased flag. All optional —
+ * an explicit `quantity` is taken as-is; a unit-only change converts the
+ * stored quantity when convertible (400 when incompatible), mirroring the
+ * pantry update flow. `name` is immutable (delete + re-add to rename).
+ */
+export const UpdateGroceryItemInput = z.object({
+  quantity: z.number().nonnegative("Quantity must be 0 or greater.").optional(),
+  unit: z.string().trim().min(1, "Unit is required.").max(30).optional(),
+  category: PantryCategory.optional(),
+  isPurchased: z.boolean().optional(),
+});
+
+export type UpdateGroceryItemInput = z.infer<typeof UpdateGroceryItemInput>;
+
+/** List rename / display-only budget / archive. Explicit `null` clears budget. */
+export const UpdateGroceryListInput = z.object({
+  name: z.string().trim().min(1, "List name is required.").max(120).optional(),
+  budget: z.number().nonnegative("Budget must be 0 or greater.").nullable().optional(),
+  status: z.enum(GROCERY_LIST_STATUS).optional(),
+});
+
+export type UpdateGroceryListInput = z.infer<typeof UpdateGroceryListInput>;
+
+/**
+ * Explicit purchased → pantry flow (body `PurchasedToPantryInput
+ * { itemIds }`, §1.4). Handled by Dev-A `upsertPantryFromGrocery`
+ * (convertible-unit merge, idempotent via `movedToPantry`).
+ */
+export const PurchasedToPantryInput = z.object({
+  itemIds: z
+    .array(ObjectIdString)
+    .min(1, "Select at least one item.")
+    .max(100, "Select at most 100 items at a time."),
+});
+
+export type PurchasedToPantryInput = z.infer<typeof PurchasedToPantryInput>;
