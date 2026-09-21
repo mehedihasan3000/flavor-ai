@@ -29,6 +29,12 @@ import type {
   FoodPhotoAnalysisResult,
   MacroAdjustmentInput,
   MacroAdjustmentResult,
+  AIGenerateMealPlanInput,
+  CreateMealPlanInput,
+  MealPlan,
+  MealPlanListQuery,
+  SwapMealInput,
+  UpdateMealPlanInput,
   PaginatedResult,
   PaginationQuery,
   PantryItem,
@@ -689,6 +695,90 @@ export async function usePantryItem(
 }
 
 // ─── MealPlan (Dev B) — FEATURES_TASKS.md §3 — Dev B appends below ────────────
+
+export function listMealPlans(
+  query: MealPlanListQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<MealPlan>> {
+  return request<PaginatedResult<MealPlan>>(`/meal-plans${toQueryString(query)}`, options);
+}
+
+export async function createMealPlan(
+  input: CreateMealPlanInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>("/meal-plans", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.plan;
+}
+
+export async function getMealPlan(
+  id: string,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}`, options);
+  return res.plan;
+}
+
+export async function updateMealPlan(
+  id: string,
+  input: UpdateMealPlanInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+  return res.plan;
+}
+
+export function deleteMealPlan(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/meal-plans/${id}`, { ...options, method: "DELETE" });
+}
+
+export async function aiGenerateMealPlan(
+  input: AIGenerateMealPlanInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>("/meal-plans/ai-generate", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.plan;
+}
+
+export async function swapMeal(
+  id: string,
+  input: SwapMealInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}/swap-meal`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.plan;
+}
+
+export async function optimizeMealPlan(
+  id: string,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}/optimize`, {
+    ...options,
+    method: "POST",
+    body: {},
+  });
+  return res.plan;
+}
 
 // ─── Grocery (Dev C) — FEATURES_TASKS.md §4 — Dev C appends below ─────────────
 
