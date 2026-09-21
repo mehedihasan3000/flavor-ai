@@ -240,7 +240,7 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
 
 ### B1. Backend model + validation
 
-- [ ] `backend/src/models/MealPlan.ts` — `userId (index)`, `name (default "My Week")`,
+- [x] `backend/src/models/MealPlan.ts` — `userId (index)`, `name (default "My Week")`,
       `weekStartDate/weekEndDate (Date, UTC midnight, §1.1)`, `status: active|archived (default active)` +
       **`isFavorite: boolean (default false)`** — favorite is a flag, not a status (a plan can be both active and favorite),
       `constraints` (snapshotted: `{ days, mealsPerDay, servings, calorieTarget?, proteinTargetGrams?, dietaryLabels?, cuisine?, budget?, notes? }`),
@@ -248,69 +248,69 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
       (subdoc `_id` serves as `mealId`),
       timestamps. Index `{ userId: 1, createdAt: -1 }`. **Slot uniqueness:** at most one meal per
       `(date, mealType)` per plan — enforced in Zod (refinement on create/update), so `swap` is never ambiguous.
-- [ ] Zod in `// ─── MealPlan (Dev B) ───`: `MealPlanConstraints`, `MealPlanMealInput`,
+- [x] Zod in `// ─── MealPlan (Dev B) ───`: `MealPlanConstraints`, `MealPlanMealInput`,
       `CreateMealPlanInput` (meals can be empty for AI flow), `UpdateMealPlanInput`,
       `AIGenerateMealPlanInput` (days 1–7 default 7, mealsPerDay subset default `[breakfast,lunch,dinner]`,
       servings 1–20 default 2, calorieTarget?, proteinTargetGrams?, dietaryLabels?, cuisine?, maxCookingTimeMinutes?,
       prioritizePantry? default true, avoidIngredients?, budget?, notes? sanitized ≤500),
       `SwapMealInput` (`{ mealId: ObjectIdString, notes? }` — exactly one meal, addressed by id).
-- [ ] Dates validated (`weekEndDate > weekStartDate`, meal dates inside range, `YYYY-MM-DD` in → UTC midnight);
+- [x] Dates validated (`weekEndDate > weekStartDate`, meal dates inside range, `YYYY-MM-DD` in → UTC midnight);
       `recipeId`s must exist and be `published` (reuse `utils/recipeAccess.ts` pattern); owner-or-self only.
 
 ### B2. Manual CRUD routes (deterministic — no AI)
 
-- [ ] `backend/src/controllers/mealPlanController.ts` — `listPlans` (paginated envelope; `?isFavorite=true` filter for the Favorites tab),
+- [x] `backend/src/controllers/mealPlanController.ts` — `listPlans` (paginated envelope; `?isFavorite=true` filter for the Favorites tab),
       `createPlan`, `getPlan` (**single-query** recipe hydration per §0.3.10; tolerate deleted recipe →
       meal shows `recipe: null` + `missing: true`, never 500),
       `updatePlan` (move meal = change `date/mealType` with slot-uniqueness re-check; servings stored only),
       `deletePlan`. All scoped `{ _id, userId }` (cross-user → 404).
-- [ ] `backend/src/routes/mealPlans.ts` — wire manual rows with `requireAuth` + `validateParams` on `:id`; **do NOT mount** (Lead does it).
+- [x] `backend/src/routes/mealPlans.ts` — wire manual rows with `requireAuth` + `validateParams` on `:id`; **do NOT mount** (Lead does it).
 
 ### B3. AI generation / swap / optimize (`services/mealPlanService.ts`, reuses Groq patterns from `aiService.ts`)
 
-- [ ] Candidate selection (deterministic, bounded): filter published recipes by diet/cuisine/time prefs → cap **~30**
+- [x] Candidate selection (deterministic, bounded): filter published recipes by diet/cuisine/time prefs → cap **~30**
       summaries (`id,title,tags,cuisine,category,6 key ingredients,per-serving kcal+protein`). Fetch caller pantry
       (`PantryItem.find({userId})`, limit 100) + profile prefs. **Never send full DB to the LLM.**
-- [ ] `generateMealPlan(input, userId)`: system/user prompt split (retrieved pantry+recipes labeled as *data*,
+- [x] `generateMealPlan(input, userId)`: system/user prompt split (retrieved pantry+recipes labeled as *data*,
       never instructions — prompt-injection rule); instruct week-level optimization (reuse, leftovers, variety,
       macro targets as selection pressure, not post-hoc math); `response_format: {type:"json_object"}`,
       timeout `AI_REQUEST_TIMEOUT_MS`; Zod-validate output; **discard any `recipeId` outside the candidate pool**;
       502/504 `AI_PROVIDER_ERROR` on failure/invalid (never store invalid).
-- [ ] `swapMeal(planId, { mealId }, userId)`: re-rank candidates **excluding** the current recipe for that slot,
+- [x] `swapMeal(planId, { mealId }, userId)`: re-rank candidates **excluding** the current recipe for that slot,
       replace only that meal, keep everything else byte-identical.
-- [ ] `optimizePlan(planId, userId)`: deterministic scoring first (pantry-overlap count, distinct-ingredient count,
+- [x] `optimizePlan(planId, userId)`: deterministic scoring first (pantry-overlap count, distinct-ingredient count,
       kcal/protein distance to targets using stored recipe nutrition — **null nutrition is skipped, never summed**),
       AI only re-orders/swaps within constraints; never violates explicit avoid-lists or diet labels.
-- [ ] Wire `POST /meal-plans/ai-generate`, `POST /meal-plans/:id/swap-meal`, `POST /meal-plans/:id/optimize`
+- [x] Wire `POST /meal-plans/ai-generate`, `POST /meal-plans/:id/swap-meal`, `POST /meal-plans/:id/optimize`
       with `requireAuth + aiRateLimiter + validateBody` (+ `validateParams` on `:id`).
-- [ ] Cost rule: move/remove/servings-change = pure DB writes, **zero AI calls**. Leftover-awareness = prompt-level
+- [x] Cost rule: move/remove/servings-change = pure DB writes, **zero AI calls**. Leftover-awareness = prompt-level
       reasoning over previous-day proteins (no fake quantities — use recipe servings as the unit).
-- [ ] Family preferences (FEATURES 1.7): implement as free-text `notes` + `dietaryLabels` intersection in v1
+- [x] Family preferences (FEATURES 1.7): implement as free-text `notes` + `dietaryLabels` intersection in v1
       (no household model — deferred, see §6).
 
 ### B4. Frontend
 
-- [ ] `lib/types.ts` + `api.ts` — `MealPlan`, `MealPlanConstraints`, `listMealPlans()`, `createMealPlan()`,
+- [x] `lib/types.ts` + `api.ts` — `MealPlan`, `MealPlanConstraints`, `listMealPlans()`, `createMealPlan()`,
       `getMealPlan()`, `updateMealPlan()`, `deleteMealPlan()`, `aiGenerateMealPlan()`, `swapMeal()`, `optimizeMealPlan()`.
-- [ ] `frontend/src/app/meal-plan/page.tsx` (list: name, date range, status tabs All/Archived + Favorites filter via `?isFavorite=true`) +
+- [x] `frontend/src/app/meal-plan/page.tsx` (list: name, date range, status tabs All/Archived + Favorites filter via `?isFavorite=true`) +
       `frontend/src/app/meal-plan/[id]/page.tsx` (weekly grid Mon–Sun × Breakfast/Lunch/Dinner + snacks;
       per-meal: recipe link, servings, Swap / Remove / Move / View actions; header: AI Generate, Optimize,
       Save-as-favorite (`isFavorite` toggle, never a status change), Generate-grocery-list link to `/grocery?plan=<id>`).
-- [ ] AI generate modal: days, meals/day, servings, calorie+protein targets, diet, cuisine, time limit,
+- [x] AI generate modal: days, meals/day, servings, calorie+protein targets, diet, cuisine, time limit,
       avoid list, budget, "use my pantry" toggle. Nutrition summary row computed deterministically from
       populated recipes (**null-nutrition recipes show "—" and are excluded from totals, never `NaN`**).
       Allergen/dietary warning banners on AI output (DoD §8 — same rule as generator/recipe views).
       All states (empty/AI-failure/invalid-response) handled.
-- [ ] **Do NOT build grocery UI here** — only link to it.
+- [x] **Do NOT build grocery UI here** — only link to it.
 
 ### B5. Tests (Dev B)
 
-- [ ] `tests/mealPlan.test.ts`: manual create/get/update/move/servings/delete, out-of-range date 400,
+- [x] `tests/mealPlan.test.ts`: manual create/get/update/move/servings/delete, out-of-range date 400,
       duplicate-slot 400, unpublished-recipe 404, cross-user 404 (incl. admin), deleted-recipe-tolerant read,
       malformed `:id` 400, `isFavorite` toggle preserves `status`.
-- [ ] `tests/mealPlanAI.test.ts` (mocked Groq fetch): happy-path stores valid plan; hallucinated `recipeId`
+- [x] `tests/mealPlanAI.test.ts` (mocked Groq fetch): happy-path stores valid plan; hallucinated `recipeId`
       discarded; invalid JSON → 502 and nothing stored; swap changes exactly one meal; timeout → 504.
-- [ ] Gate: build ✓ · lint ✓ · `npx vitest run tests/mealPlan.test.ts tests/mealPlanAI.test.ts` ✓.
+- [x] Gate: build ✓ · lint ✓ · `npx vitest run tests/mealPlan.test.ts tests/mealPlanAI.test.ts` ✓.
 
 ---
 
