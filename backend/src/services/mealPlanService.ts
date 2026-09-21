@@ -3,7 +3,7 @@ import type { FilterQuery, HydratedDocument } from "mongoose";
 import { env } from "../config/env.js";
 import { AIGenerationLogModel } from "../models/AIGenerationLog.js";
 import { MealPlanModel, type MealPlan } from "../models/MealPlan.js";
-import { PantryItemModel } from "../models/PantryItem.js";
+import { listPantryForUser } from "./pantryService.js";
 import { RecipeModel } from "../models/Recipe.js";
 import { UserModel } from "../models/User.js";
 import {
@@ -185,17 +185,8 @@ async function selectPlanCandidates(filters: {
 }
 
 async function loadPantryForPrompt(userId: string): Promise<PantryPromptItem[]> {
-  const docs = (await PantryItemModel.find({ userId })
-    .sort({ expiryDate: 1 })
-    .limit(MEAL_PLAN_PANTRY_LIMIT)
-    .select("name quantity unit expiryDate")
-    .lean()
-    .exec()) as unknown as Array<{
-    name: string;
-    quantity: number;
-    unit: string;
-    expiryDate?: Date | string | null;
-  }>;
+  // A→B seam: pantry stock comes from Dev-A pantryService, never the model.
+  const docs = await listPantryForUser(userId, MEAL_PLAN_PANTRY_LIMIT);
   return docs.map((doc) => ({
     name: doc.name,
     quantity: doc.quantity,

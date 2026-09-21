@@ -12,6 +12,47 @@ import { convertQuantity } from "../utils/units.js";
  */
 
 // ---------------------------------------------------------------------------
+// Shared read helper (B→C / A→B seams: Dev B and Dev C read pantry stock
+// through this service — never by importing the PantryItem model directly,
+// preserving §0.2 exclusive ownership)
+// ---------------------------------------------------------------------------
+
+/** Lean pantry stock line for AI-prompt and grocery-subtraction consumers. */
+export interface PantryStockLine {
+  ingredientKey: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  expiryDate: Date | string | null;
+}
+
+/**
+ * Lists the caller's pantry stock, expiry-soon first.
+ * `limit` is optional: AI-prompt callers pass a bound (e.g. 100), while
+ * deterministic consumers (grocery subtraction) omit it and get complete
+ * stock — a default cap here would silently truncate subtraction and over-buy.
+ * Returns lean objects (no Mongoose documents) shaped for both
+ * `mealPlanService.loadPantryForPrompt` and `groceryService.subtractPantry`.
+ */
+export async function listPantryForUser(
+  userId: string,
+  limit?: number,
+): Promise<PantryStockLine[]> {
+  const query = PantryItemModel.find({ userId })
+    .sort({ expiryDate: 1 })
+    .select("ingredientKey name quantity unit expiryDate");
+  if (limit !== undefined) query.limit(limit);
+  const docs = await query.lean().exec();
+  return (docs as unknown as PantryStockLine[]).map((doc) => ({
+    ingredientKey: doc.ingredientKey,
+    name: doc.name,
+    quantity: doc.quantity,
+    unit: doc.unit,
+    expiryDate: doc.expiryDate ?? null,
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Shared merge lookup (also used by the pantry controller's create flow)
 // ---------------------------------------------------------------------------
 

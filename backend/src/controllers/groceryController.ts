@@ -1,9 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
-import mongoose, { Schema, Types } from "mongoose";
+import { Types } from "mongoose";
 import { GroceryListModel } from "../models/GroceryList.js";
-import { PantryItemModel } from "../models/PantryItem.js";
+import { MealPlanModel } from "../models/MealPlan.js";
 import { RecipeModel } from "../models/Recipe.js";
-import { upsertPantryFromGrocery } from "../services/pantryService.js";
+import { listPantryForUser, upsertPantryFromGrocery } from "../services/pantryService.js";
 import {
   consolidateRequirements,
   subtractPantry,
@@ -16,28 +16,10 @@ import { parseIdParam } from "../utils/params.js";
 import { ApiError } from "../utils/ApiError.js";
 
 /**
- * MealPlan model dynamic lookup / fallback for B->C seam compatibility.
+ * B→C seam: the Dev-B `MealPlan` model is imported directly (models carry no
+ * controller logic, so §0.2 exclusive ownership is preserved — the rule bars
+ * duplicating model/service files, not reading the referenced plan).
  */
-const MealPlanModel =
-  mongoose.models.MealPlan ||
-  mongoose.model(
-    "MealPlan",
-    new Schema(
-      {
-        userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-        name: { type: String },
-        meals: [
-          {
-            recipeId: { type: Schema.Types.ObjectId, ref: "Recipe" },
-            servings: { type: Number },
-            mealType: { type: String },
-            date: { type: String },
-          },
-        ],
-      },
-      { timestamps: true },
-    ),
-  );
 
 /**
  * GET /grocery-lists
@@ -168,9 +150,8 @@ export async function generateFromMealPlan(
     ).filter((item): item is GroceryMealRequirements => item !== null);
 
     const consolidated = consolidateRequirements(mealRequirements);
-    const pantryItems = await PantryItemModel.find({
-      userId: req.user!.id,
-    }).exec();
+    // B→C/C→A seam: pantry stock is read via Dev-A pantryService, never the model.
+    const pantryItems = await listPantryForUser(req.user!.id);
     const { toBuy } = subtractPantry(consolidated, pantryItems);
 
     const listItems = toBuy.map((item) => {
@@ -305,9 +286,8 @@ export async function recalculate(
         ).filter((item): item is GroceryMealRequirements => item !== null);
 
         const consolidated = consolidateRequirements(mealRequirements);
-        const pantryItems = await PantryItemModel.find({
-          userId: req.user!.id,
-        }).exec();
+        // Same Dev-A service seam as generate (no direct model read).
+        const pantryItems = await listPantryForUser(req.user!.id);
         const { toBuy } = subtractPantry(consolidated, pantryItems);
 
         const recalculatedItems = toBuy.map((item) => {

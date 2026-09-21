@@ -1,6 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import mongoose, { Schema, Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -8,34 +8,11 @@ import { env } from "../src/config/env.js";
 import { errorHandler } from "../src/middleware/errorHandler.js";
 import { sanitizeMongoOperators } from "../src/middleware/sanitizeInput.js";
 import { GroceryListModel } from "../src/models/GroceryList.js";
+import { MealPlanModel } from "../src/models/MealPlan.js";
 import { PantryItemModel } from "../src/models/PantryItem.js";
 import { RecipeModel } from "../src/models/Recipe.js";
 import { UserModel } from "../src/models/User.js";
 import { groceryListsRouter } from "../src/routes/groceryLists.js";
-
-/**
- * MealPlan model fallback for test suite fixtures.
- */
-const MealPlanModel =
-  mongoose.models.MealPlan ||
-  mongoose.model(
-    "MealPlan",
-    new Schema(
-      {
-        userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-        name: { type: String },
-        meals: [
-          {
-            recipeId: { type: Schema.Types.ObjectId, ref: "Recipe" },
-            servings: { type: Number },
-            mealType: { type: String },
-            date: { type: String },
-          },
-        ],
-      },
-      { timestamps: true },
-    ),
-  );
 
 function buildApp() {
   const app = express();
@@ -107,7 +84,16 @@ describe("Grocery Integration Tests (grocery.test.ts)", () => {
     const mealPlan = await MealPlanModel.create({
       userId: user.id,
       name: "Weekly Plan",
-      meals: [{ recipeId: recipe._id, servings: 4 }], // 2x scale
+      weekStartDate: new Date("2026-09-21T00:00:00.000Z"),
+      weekEndDate: new Date("2026-09-27T00:00:00.000Z"),
+      meals: [
+        {
+          date: new Date("2026-09-24T00:00:00.000Z"),
+          mealType: "dinner",
+          recipeId: recipe._id,
+          servings: 4, // 2x scale
+        },
+      ],
     });
 
     await PantryItemModel.create({

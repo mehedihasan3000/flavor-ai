@@ -14,6 +14,9 @@
  *   - Comment: recipe + createdAt
  *   - Favorite: unique compound (recipe, user)
  *   - AIGenerationLog: user + createdAt
+ *   - PantryItem: user + ingredientKey + unit, user + expiryDate
+ *   - MealPlan: user + createdAt
+ *   - GroceryList: user + createdAt
  */
 
 import "dotenv/config";
@@ -23,6 +26,7 @@ import { AIGenerationLogModel } from "../src/models/AIGenerationLog.js";
 import { CommentModel } from "../src/models/Comment.js";
 import { FavoriteModel } from "../src/models/Favorite.js";
 import { GroceryListModel } from "../src/models/GroceryList.js";
+import { MealPlanModel } from "../src/models/MealPlan.js";
 import { PantryItemModel } from "../src/models/PantryItem.js";
 import { RatingModel } from "../src/models/Rating.js";
 import { RecipeModel } from "../src/models/Recipe.js";
@@ -48,6 +52,7 @@ async function syncAllIndexes(): Promise<void> {
     { name: "Favorite", model: FavoriteModel },
     { name: "AIGenerationLog", model: AIGenerationLogModel },
     { name: "PantryItem", model: PantryItemModel },
+    { name: "MealPlan", model: MealPlanModel },
     { name: "GroceryList", model: GroceryListModel },
   ];
 

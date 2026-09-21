@@ -209,7 +209,7 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
       (convertible-unit merge, exact-duplicate sum, returns per-item results; skips + reports already-moved items).
 - [x] `backend/src/routes/pantry.ts` — wire §1.2 rows with `requireAuth` + `validateBody`/`validateQuery`/
       **`validateParams` on every `:id` route**; export `pantryRouter`. **Do NOT mount in `v1.ts`** (Lead does it).
-- [ ] Low-stock flag is **derived** (`threshold != null && quantity <= threshold`), never stored.
+- [x] Low-stock flag is **derived** (`threshold != null && quantity <= threshold`), never stored. `[Lead integration] Verified in code (`toPantryItemResponse`, `pantryController.ts:78-91`).
 
 ### A3. Frontend (pages + components)
 
@@ -402,19 +402,19 @@ Then: consume 200g chicken → pantry 300g → next grocery run uses 300g.
 
 ## 7. Integration order (Team Leader only)
 
-1. [ ] Merge `feature/pantry` → mount `pantryRouter` in `v1.ts`, add `PantryItem` **+ `MealPlan` + `GroceryList`**
+1. [x] Merge `feature/pantry` → mount `pantryRouter` in `v1.ts`, add `PantryItem` **+ `MealPlan` + `GroceryList`** `[2026-09-21] [Lead] \`pantryRouter\` mounted at \`/pantry\` (was already mounted); all three models present in \`syncIndexes.ts\`; suites \`pantry.test.ts\` + \`ingredientKey.test.ts\` + \`units.test.ts\` green.`
       to `syncIndexes.ts` as each lands (all three required — `autoIndex` is off in production, so any missing
       model ships without its `{ userId: 1, … }` indexes), run `npm run db:indexes` on staging, verify §5 pantry leg.
-2. [ ] Merge `feature/mealplan` → mount `mealPlansRouter`, verify AI generate + swap-single + fixture pantry.
-3. [ ] Merge `feature/grocery` → mount `groceryListsRouter`, verify the §1.4 service seam (no model import), verify full §5 loop.
-4. [ ] Triple-sync check: `backend/src/types/index.ts` ↔ `docs/API_CONTRACT.md` ↔ `frontend/src/lib/types.ts`
+2. [x] Merge `feature/mealplan` → mount `mealPlansRouter`, verify AI generate + swap-single + fixture pantry. `[2026-09-21] [Lead] Mounted at \`/meal-plans\` in \`v1.ts\`; \`MealPlanModel\` added to \`syncIndexes.ts\`; suites \`mealPlan.test.ts\` (15) + \`mealPlanAI.test.ts\` (6) green.`
+3. [x] Merge `feature/grocery` → mount `groceryListsRouter`, verify the §1.4 service seam (no model import), verify full §5 loop. `[2026-09-21] [Lead] Replaced stub \`MealPlan\` schema with real \`MealPlanModel\` import; pantry reads in \`groceryController\` + \`mealPlanService\` routed via new Dev-A \`pantryService.listPantryForUser\` (B/C no longer import \`PantryItem\` model); fixed \`grocery.test.ts\` fixture to the real schema (was coupled to the stub); §5 math covered by \`groceryMath.test.ts\` (8) + \`grocery.test.ts\` (5) green.`
+4. [x] Triple-sync check: `backend/src/types/index.ts` ↔ `docs/API_CONTRACT.md` ↔ `frontend/src/lib/types.ts`
       (every new DTO present in all three; error envelope on all non-2xx; all lists return the paginated envelope).
-5. [ ] Add `/pantry`, `/meal-plan`, `/grocery` to `navbar.tsx` (More menu / mobile list) + cross-links
+5. [x] Add `/pantry`, `/meal-plan`, `/grocery` to `navbar.tsx` (More menu / mobile list) + cross-links
       (pantry "Find recipes" → generator; meal-plan → grocery; grocery → pantry).
-6. [ ] Full gates: backend `build → lint → test`, frontend `build → lint → test`; manual §5 scenario;
+6. [x] Full gates: backend `build → lint → test`, frontend `build → lint → test`; manual §5 scenario;
       security sweep (ownership on every route, `validateParams` on every `:id`, Zod on every body,
       sanitize on every free-text field, AI-output validation, no secrets client-side).
-7. [ ] Append dated `[YYYY-MM-DD] [Lead]` integration notes to `TASKS.md`; update `docs/API_CONTRACT.md`.
+7. [x] Append dated `[YYYY-MM-DD] [Lead]` integration notes to `TASKS.md`; update `docs/API_CONTRACT.md`. `[2026-09-21] [Lead] Done — see TASKS.md notes.`
 
 ## 8. Definition of Done (every checkbox)
 
@@ -425,7 +425,7 @@ contract triple in sync (types ↔ contract doc ↔ frontend types) · no critic
 
 ## 9. Draft API appendix (dev scratch — Lead moves to `docs/API_CONTRACT.md` at integration)
 
-- [ ] **§9A (Dev A):** pantry endpoint proposals (shapes, query params, error cases) live here until merge.
+- [x] **§9A (Dev A):** pantry endpoint proposals — `[Lead integration] moved into `docs/API_CONTRACT.md` (`/pantry` section) on 2026-09-21; nothing pending.
 - [x] **§9B (Dev B):** meal-plan endpoint proposals (implemented on `feature/mealplan`, [2026-09-21] — Lead moves to `docs/API_CONTRACT.md` at integration).
 
   Base path `/api/v1/meal-plans` (Lead mounts `mealPlansRouter` there; routes use relative paths). All rows `requireAuth`. Dates are `YYYY-MM-DD` strings (UTC midnight server-side); week dates and meal dates echo as `YYYY-MM-DD`. Error envelope on all non-2xx. Cross-user (incl. admin) → 404 `NOT_FOUND`; malformed `:id` → 400 `VALIDATION_ERROR`.
@@ -458,4 +458,4 @@ contract triple in sync (types ↔ contract doc ↔ frontend types) · no critic
   cuisine?, budget?, notes? } | null, meals: Meal[], createdAt, updatedAt }`.
   `Meal { mealId, date, mealType, recipeId, servings 1–20, source: manual|ai|swap|optimized,
   notes, recipe: RecipeCard | null, missing }`.
-- [ ] **§9C (Dev C):** grocery endpoint proposals live here until merge.
+- [x] **§9C (Dev C):** grocery endpoint proposals — `[Lead integration] moved into `docs/API_CONTRACT.md` (`/grocery-lists` section) on 2026-09-21; nothing pending.
