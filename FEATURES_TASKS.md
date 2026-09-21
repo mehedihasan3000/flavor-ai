@@ -426,5 +426,36 @@ contract triple in sync (types ↔ contract doc ↔ frontend types) · no critic
 ## 9. Draft API appendix (dev scratch — Lead moves to `docs/API_CONTRACT.md` at integration)
 
 - [ ] **§9A (Dev A):** pantry endpoint proposals (shapes, query params, error cases) live here until merge.
-- [ ] **§9B (Dev B):** meal-plan endpoint proposals live here until merge.
+- [x] **§9B (Dev B):** meal-plan endpoint proposals (implemented on `feature/mealplan`, [2026-09-21] — Lead moves to `docs/API_CONTRACT.md` at integration).
+
+  Base path `/api/v1/meal-plans` (Lead mounts `mealPlansRouter` there; routes use relative paths). All rows `requireAuth`. Dates are `YYYY-MM-DD` strings (UTC midnight server-side); week dates and meal dates echo as `YYYY-MM-DD`. Error envelope on all non-2xx. Cross-user (incl. admin) → 404 `NOT_FOUND`; malformed `:id` → 400 `VALIDATION_ERROR`.
+
+  ```text
+  GET    /meal-plans?status=&isFavorite=&page=&limit=
+    → 200 { items: MealPlan[], page, limit, total, totalPages }
+    (list items are NOT recipe-hydrated; use GET /:id for cards)
+  POST   /meal-plans { name?, weekStartDate, weekEndDate, status?, isFavorite?, constraints?, meals? }
+    → 201 { plan } (hydrated); meals may be [] (AI shell)
+    → 404 when a recipeId is missing/unpublished; 400 on out-of-range date, duplicate (date,mealType) slot, weekEndDate <= weekStartDate
+  GET    /meal-plans/:id → 200 { plan } with recipe cards; deleted recipe → { recipe: null, missing: true }
+  PATCH  /meal-plans/:id { name?, weekStartDate?, weekEndDate?, status?, isFavorite?, constraints?, meals? }
+    → 200 { plan }; meals = FULL-array replace (move/remove/servings); merged week re-validated
+  DELETE /meal-plans/:id → 200 { success: true }
+  POST   /meal-plans/ai-generate (aiRateLimiter)
+    { name?, weekStartDate, weekEndDate?, days=7, mealsPerDay=[breakfast,lunch,dinner], servings=2,
+      calorieTarget?, proteinTargetGrams?, dietaryLabels?=[], cuisine?, maxCookingTimeMinutes?,
+      prioritizePantry=true, avoidIngredients?=[], budget?, notes? }
+    → 201 { plan } (source "ai", constraints snapshot); weekEndDate defaults to start+days−1
+    → 404 when no published recipes match; 502/504 on provider failure/invalid output (nothing stored)
+  POST   /meal-plans/:id/swap-meal (aiRateLimiter) { mealId, notes? }
+    → 200 { plan }; exactly one meal replaced (servings/notes kept, source "swap")
+  POST   /meal-plans/:id/optimize (aiRateLimiter, body {}) → 200 { plan }
+    (tolerant per-slot merge; changed meals source "optimized"; empty plan → 400)
+  ```
+
+  `MealPlan { id, userId, name, weekStartDate, weekEndDate, status: active|archived, isFavorite,
+  constraints { days?, mealsPerDay?, servings?, calorieTarget?, proteinTargetGrams?, dietaryLabels?,
+  cuisine?, budget?, notes? } | null, meals: Meal[], createdAt, updatedAt }`.
+  `Meal { mealId, date, mealType, recipeId, servings 1–20, source: manual|ai|swap|optimized,
+  notes, recipe: RecipeCard | null, missing }`.
 - [ ] **§9C (Dev C):** grocery endpoint proposals live here until merge.
