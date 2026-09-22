@@ -170,7 +170,9 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     setRatingError(null);
     rateRecipe(id, { value }, { token })
       .then(({ summary }) => {
-        setRatingSummary(summary);
+        // PUT /ratings returns { averageRating, ratingCount } without myRating —
+        // keep the just-submitted value so the picker reflects "Your rating".
+        setRatingSummary({ ...summary, myRating: value });
         setRecipe((prev) =>
           prev ? { ...prev, averageRating: summary.averageRating, ratingCount: summary.ratingCount } : prev,
         );
@@ -334,8 +336,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
           Home
         </Link>
         <span>/</span>
-        <Link href="/generator" className="hover:text-neutral-900 transition">
-          Generator
+        <Link href="/recipes" className="hover:text-neutral-900 transition">
+          Recipes
         </Link>
         <span>/</span>
         <span className="font-medium text-neutral-900 truncate max-w-[200px]">
