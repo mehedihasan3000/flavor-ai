@@ -9,15 +9,25 @@ import type { AuthUser } from "../types/auth.js";
 import {
   AdminCommentModerationInput,
   AdminCommentSearchQuery,
+  AdminOverviewQuery,
   AdminRecipeModerationInput,
   AdminRecipeSearchQuery,
   AdminUserSearchQuery,
 } from "../types/index.js";
+import { getAdminOverview } from "../services/adminOverviewService.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logAdminAction } from "../utils/adminLog.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { parseIdParam } from "../utils/params.js";
 import { escapeRegExp } from "../utils/regex.js";
+
+/** GET /admin/overview — fetch platform overview metrics and health. */
+export const getAdminOverviewData = asyncHandler(async (req: Request, res: Response) => {
+  const { range } = AdminOverviewQuery.parse(req.query);
+  const overview = await getAdminOverview(range);
+  res.json(overview);
+});
+
 
 type UserRecord = {
   _id: unknown;

@@ -571,3 +571,354 @@ export interface AdminCommentSearchQuery extends PaginationQuery {
 export interface AdminCommentModerationInput {
   moderationStatus: CommentStatus;
 }
+
+export type AdminOverviewRange = "7d" | "30d" | "90d";
+
+export interface AdminOverviewKpis {
+  totalUsers: number;
+  userRoles: {
+    user: number;
+    admin: number;
+  };
+  totalRecipes: number;
+  recipeStatus: {
+    published: number;
+    draft: number;
+    hidden: number;
+  };
+  recipeSource: {
+    ai: number;
+    manual: number;
+  };
+  pendingModeration: {
+    hiddenRecipes: number;
+    moderatedComments: number;
+    total: number;
+  };
+  totalComments: number;
+  totalFavorites: number;
+  platformAverageRating: number;
+  aiMetrics: {
+    total: number;
+    successRate: number;
+    averageLatencyMs: number;
+  };
+}
+
+export interface AdminOverviewTrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface AdminOverviewTrends {
+  userGrowth: AdminOverviewTrendPoint[];
+  recipeCreation: AdminOverviewTrendPoint[];
+}
+
+export interface AdminOverviewAiHealth {
+  success: number;
+  failed: number;
+  timeout: number;
+}
+
+export interface AdminOverviewTopRecipe {
+  id: string;
+  title: string;
+  averageRating: number;
+  favoriteCount: number;
+  status: RecipeStatus;
+}
+
+export interface AdminOverviewTopCreator {
+  userId: string;
+  name: string;
+  recipeCount: number;
+}
+
+export interface AdminOverviewTopLists {
+  topRecipes: AdminOverviewTopRecipe[];
+  topCreators: AdminOverviewTopCreator[];
+}
+
+export interface AdminOverviewActivityItem {
+  type: "user_registered" | "recipe_published" | "comment_moderated";
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+export type AiErrorCategory =
+  | "provider_error"
+  | "invalid_output"
+  | "timeout"
+  | "rate_limit"
+  | "unknown";
+
+export interface AdminOverviewAiFailureItem {
+  id: string;
+  model: string;
+  errorCategory: AiErrorCategory | null;
+  latencyMs: number;
+  createdAt: string;
+}
+
+export interface AdminOverviewFeeds {
+  latestActivity: AdminOverviewActivityItem[];
+  recentAiFailures: AdminOverviewAiFailureItem[];
+}
+
+export interface AdminOverviewData {
+  range: AdminOverviewRange;
+  kpis: AdminOverviewKpis;
+  trends: AdminOverviewTrends;
+  aiHealth: AdminOverviewAiHealth;
+  topLists: AdminOverviewTopLists;
+  feeds: AdminOverviewFeeds;
+// ─── Pantry (Dev A) — Real Pantry Management (FEATURES_TASKS.md §2) ──────────
+// Dev A appends PantryItem / CreatePantryItemInput / PantrySearchQuery below.
+// Other workstreams do not edit.
+
+export type PantryCategory =
+  | "vegetables"
+  | "fruits"
+  | "meat"
+  | "dairy"
+  | "grains"
+  | "spices"
+  | "frozen"
+  | "snacks"
+  | "other";
+
+export interface PantryItem {
+  id: string;
+  userId: string;
+  ingredientKey: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+  expiryDate: string | null;
+  lowStockThreshold: number | null;
+  /** Derived server-side (`threshold != null && quantity <= threshold`). */
+  lowStock: boolean;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePantryItemInput {
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+  expiryDate?: string | null;
+  lowStockThreshold?: number | null;
+  notes?: string;
+}
+
+export type UpdatePantryItemInput = Partial<CreatePantryItemInput>;
+
+export interface UsePantryItemInput {
+  quantity: number;
+}
+
+export interface PantrySearchQuery extends PaginationQuery {
+  category?: PantryCategory;
+  q?: string;
+  expiringWithinDays?: number;
+  lowStock?: boolean;
+}
+
+// ─── MealPlan (Dev B) — Smart Meal Planning (FEATURES_TASKS.md §3) ───────────
+// Dev B appends MealPlan / MealPlanConstraints below. Other workstreams do not edit.
+
+export type MealPlanStatus = "active" | "archived";
+export type MealPlanMealSource = "manual" | "ai" | "swap" | "optimized";
+
+export interface MealPlanConstraints {
+  days?: number;
+  mealsPerDay?: MealType[];
+  servings?: number;
+  calorieTarget?: number;
+  proteinTargetGrams?: number;
+  dietaryLabels?: DietaryLabel[];
+  cuisine?: string;
+  budget?: number;
+  notes?: string;
+}
+
+export interface MealPlanMealInput {
+  /** `YYYY-MM-DD` (UTC midnight server-side). */
+  date: string;
+  mealType: MealType;
+  recipeId: string;
+  servings: number;
+  source?: MealPlanMealSource;
+  notes?: string;
+}
+
+/** Populated recipe card on a meal (subset of `Recipe` needed by the planner). */
+export interface MealPlanRecipeCard {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  servings: number;
+  ingredients: Array<{
+    name: string;
+    quantity?: number | null;
+    unit?: string | null;
+    notes?: string | null;
+  }>;
+  nutrition: Record<string, number | null> | null;
+  dietaryLabels: string[];
+  allergenWarnings: string[];
+  totalTimeMinutes: number;
+  cuisine: string | null;
+  category: string | null;
+  status: string;
+}
+
+export interface MealPlanMeal {
+  /** Subdoc `_id` — address swaps/removes/moves by this, never by slot. */
+  mealId: string;
+  /** `YYYY-MM-DD` — the grid's canonical date key. */
+  date: string;
+  mealType: MealType;
+  recipeId: string;
+  servings: number;
+  source: MealPlanMealSource;
+  notes: string;
+  /** `null` + `missing: true` when the recipe was deleted. */
+  recipe: MealPlanRecipeCard | null;
+  missing: boolean;
+}
+
+export interface MealPlan {
+  id: string;
+  userId: string;
+  name: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  status: MealPlanStatus;
+  /** Favorite is a flag, not a status — a plan can be both active and favorite. */
+  isFavorite: boolean;
+  constraints: MealPlanConstraints | null;
+  meals: MealPlanMeal[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateMealPlanInput {
+  name?: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  status?: MealPlanStatus;
+  isFavorite?: boolean;
+  constraints?: MealPlanConstraints;
+  /** May be empty — the AI flow creates the shell first. */
+  meals?: MealPlanMealInput[];
+}
+
+export interface UpdateMealPlanInput {
+  name?: string;
+  weekStartDate?: string;
+  weekEndDate?: string;
+  status?: MealPlanStatus;
+  isFavorite?: boolean;
+  constraints?: MealPlanConstraints;
+  /** Full-array replace (move = change date/mealType, remove = omit). */
+  meals?: MealPlanMealInput[];
+}
+
+export interface AIGenerateMealPlanInput {
+  name?: string;
+  weekStartDate: string;
+  /** May be omitted — server computes `weekStartDate + days − 1`. */
+  weekEndDate?: string;
+  days?: number;
+  mealsPerDay?: MealType[];
+  servings?: number;
+  calorieTarget?: number;
+  proteinTargetGrams?: number;
+  dietaryLabels?: DietaryLabel[];
+  cuisine?: string;
+  maxCookingTimeMinutes?: number;
+  prioritizePantry?: boolean;
+  avoidIngredients?: string[];
+  budget?: number;
+  notes?: string;
+}
+
+export interface SwapMealInput {
+  mealId: string;
+  notes?: string;
+}
+
+export interface MealPlanListQuery extends PaginationQuery {
+  status?: MealPlanStatus;
+  isFavorite?: boolean;
+}
+
+// ─── Grocery (Dev C) — Smart Grocery System (FEATURES_TASKS.md §4) ───────────
+// Dev C appends GroceryList / GroceryItem below. Other workstreams do not edit.
+
+export type GroceryListStatus = "active" | "archived";
+
+export interface GroceryItem {
+  _id: string;
+  ingredientKey: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+  sourceRecipeIds: string[];
+  isPurchased: boolean;
+  isManual: boolean;
+  estimated: boolean;
+  movedToPantry: boolean;
+}
+
+export interface GroceryList {
+  _id: string;
+  userId: string;
+  mealPlanId?: string | null;
+  name: string;
+  budget?: number | null;
+  status: GroceryListStatus;
+  items: GroceryItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateGroceryInput {
+  mealPlanId: string;
+}
+
+export interface AddGroceryItemInput {
+  name: string;
+  quantity: number;
+  unit: string;
+  category: PantryCategory;
+}
+
+export interface UpdateGroceryItemInput {
+  quantity?: number;
+  unit?: string;
+  category?: PantryCategory;
+  isPurchased?: boolean;
+}
+
+export interface UpdateGroceryListInput {
+  name?: string;
+  budget?: number | null;
+  status?: GroceryListStatus;
+}
+
+export interface PurchasedToPantryInput {
+  itemIds: string[];
+}
+
+export interface GroceryListSearchQuery extends PaginationQuery {
+  status?: GroceryListStatus;
+}
+

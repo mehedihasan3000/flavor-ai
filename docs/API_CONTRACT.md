@@ -507,6 +507,7 @@ the caller's whole favorites list. The `recipe` card projection returned by
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+| GET | `/admin/overview` | admin | **Additive:** platform analytics, KPIs, trends, AI health & activity feeds (`?range=7d\|30d\|90d`) |
 | GET | `/admin/users` | admin | List/search users (`AdminUserSearchQuery`: `page`, `limit`, `q`, `role`) |
 | GET | `/admin/recipes` | admin | List all recipes incl. hidden/draft (`AdminRecipeSearchQuery`: `page`, `limit`, `q`, `status`) |
 | PATCH | `/admin/recipes/:id` | admin | Hide/restore recipe (FR-ADMIN-02) |
@@ -518,6 +519,41 @@ the caller's whole favorites list. The `recipe` card projection returned by
 All admin actions are logged (FR-ADMIN-03, structured `console.info`; no separate
 audit-log model — FR-ADMIN-04 allows protected endpoints without a full
 dashboard for MVP). Non-admin → 403.
+
+**Additive (post-freeze): `GET /admin/overview`** (admin required). Additive endpoint; needs Lead sign-off per contract freeze. Accepts optional `?range=7d|30d|90d` (default `30d`). Invalid range → 400 `VALIDATION_ERROR`.
+
+Response → 200 `AdminOverviewResult`:
+```json
+{
+  "range": "30d",
+  "kpis": {
+    "totalUsers": 150,
+    "userRoles": { "user": 145, "admin": 5 },
+    "totalRecipes": 320,
+    "recipeStatus": { "published": 250, "draft": 50, "hidden": 20 },
+    "recipeSource": { "ai": 210, "manual": 110 },
+    "pendingModeration": { "hiddenRecipes": 20, "moderatedComments": 8, "total": 28 },
+    "totalComments": 412,
+    "totalFavorites": 890,
+    "platformAverageRating": 4.62,
+    "aiMetrics": { "total": 500, "successRate": 96.4, "averageLatencyMs": 1240 }
+  },
+  "trends": {
+    "userGrowth": [ { "date": "2026-03-01", "count": 5 } ],
+    "recipeCreation": [ { "date": "2026-03-01", "count": 12 } ]
+  },
+  "aiHealth": { "success": 482, "failed": 12, "timeout": 6 },
+  "topLists": {
+    "topRecipes": [ { "id": "...", "title": "Garlic Chicken", "averageRating": 4.9, "favoriteCount": 42, "status": "published" } ],
+    "topCreators": [ { "userId": "...", "name": "Chef Ada", "recipeCount": 18 } ]
+  },
+  "feeds": {
+    "latestActivity": [ { "type": "user_registered", "id": "...", "title": "Ada Lovelace", "createdAt": "ISO8601" } ],
+    "recentAiFailures": [ { "id": "...", "model": "llama3-70b-8192", "errorCategory": "timeout", "latencyMs": 30000, "createdAt": "ISO8601" } ]
+  }
+}
+```
+
 
 **`PATCH /admin/recipes/:id` body** (`AdminRecipeModerationInput`):
 ```json
@@ -537,6 +573,100 @@ moderate/unmoderate/delete.
 
 `GET /admin/users` items: `{ id, name, email, avatarUrl, bio, role, createdAt, updatedAt }`.
 All three list endpoints return the standard paginated envelope `{ items, page, limit, total, totalPages }`.
+
+---
+
+## `/pantry` — persistent pantry (Workstream A)
+
+All routes require auth (`requireAuth`). Every query is scoped to `{ _id, userId: req.user.id }` —
+cross-user access (including admins) → 404 `NOT_FOUND`. Malformed `:id` → 400 `VALIDATION_ERROR`
+(`parseIdParam`). Free-text `name`/`notes` are sanitized (`utils/sanitize.ts`) before Zod validation.
+`lowStock` is derived (`threshold != null && quantity <= threshold`), never stored.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/pantry/items` | List own items, paginated envelope (`PantrySearchQuery`: `category`, `q`, `expiringWithinDays`, `lowStock`, `page`, `limit`) |
+| POST | `/pantry/items` | Add item (`CreatePantryItemInput`) |
+| PATCH | `/pantry/items/:id` | Edit item / adjust quantity (`UpdatePantryItemInput`) |
+| DELETE | `/pantry/items/:id` | Remove item → 200 `{ success: true }` |
+| POST | `/pantry/items/:id/use` | Consume quantity (body `UsePantryItemInput { quantity }`) |
+| GET | `/pantry/expiring` | Items with `expiryDate != null`, sorted asc, paginated envelope |
+
+**Item shape:** `{ id, userId, ingredientKey, name, quantity, unit, category, expiryDate, lowStockThreshold, lowStock, notes, createdAt, updatedAt }`.
+`ingredientKey` is normalized server-side (`utils/ingredientKey.ts`); `expiryDate` accepts `YYYY-MM-DD`
+(UTC midnight) and must be today-or-future; `category` is one of
+`vegetables|fruits|meat|dairy|grains|spices|frozen|snacks|other`.
+
+**Duplicate/merge semantics:** exact `ingredientKey + unit` duplicate → 409 `CONFLICT`
+("Update its quantity instead"); convertible-unit near-duplicate (`500g` + `1kg`) → converted and
+summed into the existing line → 200 `{ item }` (no second line); otherwise → 201 `{ item }`.
+
+**Consume semantics:** conditional atomic decrement
+(`findOneAndUpdate({ _id, userId, quantity: { $gte: qty } }, { $inc: -qty })`) — insufficient
+stock → 409 `CONFLICT` with the available amount in the message; quantity can never go negative.
+
+**Filters:** `q` is regex-escaped; `expiringWithinDays=N` matches `expiryDate != null AND <= today+N`
+(null expiries never match); `lowStock=true` matches `threshold != null AND quantity <= threshold`.
+
+---
+
+## `/meal-plans` — smart meal planning (Workstream B)
+
+All routes require auth. Same ownership/param rules as `/pantry` (cross-user incl. admin → 404,
+malformed `:id` → 400). AI routes additionally carry `aiRateLimiter` (10/15 min); deterministic
+CRUD stays on the base limiter. Dates are `YYYY-MM-DD` (UTC midnight); week and meal dates echo as
+`YYYY-MM-DD`. At most one meal per `(date, mealType)` per plan (Zod refinement); swap is addressed
+by subdoc `mealId`, never ambiguous. `isFavorite` is a flag (a plan can be both `active` and favorite).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/meal-plans` | List own plans, paginated (`MealPlanListQuery`: `status`, `isFavorite`, `page`, `limit`); meals hydrated with recipe cards |
+| POST | `/meal-plans` | Manual create (`CreateMealPlanInput`; meals may be `[]`) → 201 `{ plan }` |
+| GET | `/meal-plans/:id` | Detail → 200 `{ plan }` with recipe cards; deleted recipe → `{ recipe: null, missing: true }` |
+| PATCH | `/meal-plans/:id` | Full-array meal replace (move/remove/servings), name/dates/status/favorite edits → 200 `{ plan }` |
+| DELETE | `/meal-plans/:id` | Delete → 200 `{ success: true }` |
+| POST | `/meal-plans/ai-generate` | AI full-plan generation (`AIGenerateMealPlanInput`) → 201 `{ plan }` |
+| POST | `/meal-plans/:id/swap-meal` | Replace exactly one meal (`SwapMealInput { mealId, notes? }`) → 200 `{ plan }` |
+| POST | `/meal-plans/:id/optimize` | Pantry/reuse/nutrition optimization pass (body `{}`) → 200 `{ plan }` |
+
+**Plan shape:** `{ id, userId, name, weekStartDate, weekEndDate, status: active|archived, isFavorite,
+constraints | null, meals: [{ mealId, date, mealType, recipeId, servings 1–20,
+source: manual|ai|swap|optimized, notes, recipe: card | null, missing }], createdAt, updatedAt }`.
+`recipeId`s must reference existing **published** recipes (missing/unpublished → 404); out-of-range
+dates, duplicate slots, or `weekEndDate <= weekStartDate` → 400. AI output is Zod-validated
+server-side; hallucinated `recipeId`s outside the candidate pool are discarded; provider
+failure/invalid output → 502/504 `AI_PROVIDER_ERROR` with nothing stored. Move/remove/servings
+changes are pure DB writes (zero AI calls).
+
+---
+
+## `/grocery-lists` — smart grocery system (Workstream C)
+
+All routes require auth. Same ownership/param rules as above. All math (consolidate → subtract
+pantry) is deterministic application code (`services/groceryService.ts` + Dev-A `utils/units.ts`) —
+never the LLM. Pantry stock is read via Dev-A `pantryService.listPantryForUser` (B/C never import
+the `PantryItem` model). `budget` is display-only in v1; no `estimatedCost` is stored without real
+price data. Imperial/unknown units (`oz`, `lb`, …) are display-only and never auto-merged.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/grocery-lists` | List own lists, paginated (`page`, `limit`, `status`) |
+| GET | `/grocery-lists/:id` | Detail (list document with `items[]`) |
+| POST | `/grocery-lists/generate` | Generate from `GenerateGroceryInput { mealPlanId }` → 201 list document |
+| PATCH | `/grocery-lists/:id` | `UpdateGroceryListInput { name?, budget?, status? }` → 200 list |
+| POST | `/grocery-lists/:id/items` | Add manual item (`AddGroceryItemInput`, stored `isManual: true`) → 200 list |
+| PATCH | `/grocery-lists/:id/items/:itemId` | `UpdateGroceryItemInput { quantity?, unit?, category?, isPurchased? }` → 200 list |
+| DELETE | `/grocery-lists/:id/items/:itemId` | Remove item → 200 list |
+| POST | `/grocery-lists/:id/clear-purchased` | Remove all purchased items (body `{}`) → 200 list |
+| POST | `/grocery-lists/:id/recalculate` | Re-run consolidate+subtract (body `{}`) → 200 list; preserves manual items + `isPurchased`/`movedToPantry` flags matched by `ingredientKey`+canonical unit |
+| POST | `/grocery-lists/:id/purchased-to-pantry` | `PurchasedToPantryInput { itemIds }` → 200 `{ results, list }`; upserts via Dev-A `upsertPantryFromGrocery`, idempotent (double-POST is a no-op via `movedToPantry`) |
+
+**Item shape:** `{ _id, ingredientKey, name, quantity, unit, category, sourceRecipeIds[],
+isPurchased, isManual, estimated, movedToPantry }`. Generation scales recipe quantities by
+`meal.servings / recipe.servings`, consolidates by `ingredientKey`+base unit (incompatible units
+stay separate lines; missing quantities become `1 pcs` + `estimated: true`), then subtracts pantry
+(`toBuy = max(0, required − pantry)` per convertible unit; fully-covered items excluded from the
+list but reported as covered).
 
 ---
 

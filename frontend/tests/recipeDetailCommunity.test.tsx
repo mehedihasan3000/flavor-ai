@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import RecipeDetailPage from "../src/app/recipes/[id]/page";
 import * as authContext from "../src/lib/auth-context";
@@ -12,6 +12,7 @@ const { apiMocks } = vi.hoisted(() => ({
     getRatingSummary: vi.fn(),
     getFavoriteStatus: vi.fn(),
     listComments: vi.fn(),
+    rateRecipe: vi.fn(),
   },
 }));
 
@@ -156,5 +157,34 @@ describe("RecipeDetailPage community gating (draft/hidden 404 regression)", () =
     expect(apiMocks.listComments).toHaveBeenCalled();
     expect(apiMocks.getRatingSummary).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /favorite/i })).toBeEnabled();
+  });
+
+  it("submitting a rating updates the summary and keeps the user's pick", async () => {
+    mockAuth("u2");
+    apiMocks.getRecipe.mockResolvedValue(
+      recipeFixture({ id: "r-rate", title: "Ratable Dish", status: "published", owner: "u1" }),
+    );
+    apiMocks.getRatingSummary.mockResolvedValue({ averageRating: 0, ratingCount: 0, myRating: null });
+    apiMocks.getFavoriteStatus.mockResolvedValue({ favorited: false });
+    apiMocks.listComments.mockResolvedValue({ items: [], total: 0, page: 1, limit: 10, totalPages: 0 });
+    // PUT /ratings returns { rating, summary } with no myRating key.
+    apiMocks.rateRecipe.mockResolvedValue({
+      rating: { id: "rt1", recipe: "r-rate", user: "u2", value: 4 },
+      summary: { averageRating: 4, ratingCount: 1 },
+    });
+
+    await renderPage("r-rate");
+
+    await screen.findByRole("heading", { name: "Ratable Dish" });
+    expect(await screen.findByText("Rate this recipe")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "4 stars" }));
+
+    expect(apiMocks.rateRecipe).toHaveBeenCalledWith("r-rate", { value: 4 }, expect.anything());
+    // Summary reflects the new average…
+    expect(await screen.findByText("4.0")).toBeInTheDocument();
+    // …and the picker keeps the submitted value (myRating preserved).
+    expect(await screen.findByText("Your rating")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /remove my rating/i })).toBeInTheDocument();
   });
 });
