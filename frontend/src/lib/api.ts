@@ -1,6 +1,8 @@
 import type {
   AdminComment,
   AdminCommentSearchQuery,
+  AdminOverviewData,
+  AdminOverviewRange,
   AdminRecipe,
   AdminRecipeSearchQuery,
   AdminUser,
@@ -635,6 +637,14 @@ export function adminDeleteComment(
 ): Promise<{ success: true }> {
   return request<{ success: true }>(`/admin/comments/${id}`, { ...options, method: "DELETE" });
 }
+
+export function adminGetOverview(
+  range: AdminOverviewRange = "30d",
+  options: RequestOptions = {},
+): Promise<AdminOverviewData> {
+  return request<AdminOverviewData>(`/admin/overview?range=${range}`, options);
+}
+
 
 // ─── Pantry (Dev A) — FEATURES_TASKS.md §2 — Dev A appends below ─────────────
 
