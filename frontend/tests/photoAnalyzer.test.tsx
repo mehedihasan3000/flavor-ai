@@ -2,7 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NutritionAnalyzerPage from "../src/app/nutrition-analyzer/page";
 import { NutritionBreakdownView } from "../src/components/nutrition/nutrition-breakdown-view";
-import { PhotoDropzone } from "../src/components/nutrition/photo-dropzone";
+import {
+  PhotoDropzone,
+  estimateJsonPayloadBytes,
+  needsCompressionForVercel,
+  VERCEL_SAFE_JSON_LIMIT_BYTES,
+} from "../src/components/nutrition/photo-dropzone";
 import * as authContext from "../src/lib/auth-context";
 import { AuthProvider } from "../src/lib/auth-context";
 
@@ -122,6 +127,55 @@ describe("Food Photo Nutrition Analysis Frontend Suite", () => {
       const removeBtn = screen.getByRole("button", { name: /remove selected photo/i });
       fireEvent.click(removeBtn);
       expect(handleClear).toHaveBeenCalled();
+    });
+
+    it("advertises 15 MB max with auto-optimization (not a raw 10 MB passthrough)", () => {
+      render(
+        <PhotoDropzone selectedImage={null} onImageSelected={vi.fn()} onClear={vi.fn()} />,
+      );
+      expect(screen.getByText(/max 15 MB/i)).toBeInTheDocument();
+      expect(screen.getByText(/auto-optimized/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("Vercel 4.5 MB payload gate (production root cause)", () => {
+    const MB = 1024 * 1024;
+
+    it.each([
+      { sizeMB: 1, compress: false },
+      { sizeMB: 2, compress: false },
+      { sizeMB: 5, compress: true },
+      { sizeMB: 6, compress: true },
+      { sizeMB: 7, compress: true },
+      { sizeMB: 10, compress: true },
+      { sizeMB: 12, compress: true },
+    ])(
+      "$sizeMB MB original → needsCompression=$compress (raw JSON would be ~$sizeMB MB base64)",
+      ({ sizeMB, compress }) => {
+        expect(needsCompressionForVercel(sizeMB * MB)).toBe(compress);
+      },
+    );
+
+    it("raw 5–7 MB photos exceed the Vercel cap as JSON (why prod 413'd while localhost passed)", () => {
+      for (const sizeMB of [5, 6, 7]) {
+        const jsonBytes = estimateJsonPayloadBytes(sizeMB * 1024 * 1024);
+        // Base64 inflates ~33%: 5 MB → ~6.8 MB, 7 MB → ~9.5 MB — all > 4.5 MB.
+        expect(jsonBytes).toBeGreaterThan(4_500_000);
+        expect(jsonBytes).toBeGreaterThan(VERCEL_SAFE_JSON_LIMIT_BYTES);
+      }
+    });
+
+    it("1–2 MB photos fit the Vercel cap as-is (working case stays untouched)", () => {
+      for (const sizeMB of [1, 2]) {
+        expect(estimateJsonPayloadBytes(sizeMB * 1024 * 1024)).toBeLessThan(
+          VERCEL_SAFE_JSON_LIMIT_BYTES,
+        );
+      }
+    });
+
+    it("compressed 2.8 MB budget fits the Vercel cap with margin", () => {
+      expect(estimateJsonPayloadBytes(2_800_000)).toBeLessThan(VERCEL_SAFE_JSON_LIMIT_BYTES);
+      expect(estimateJsonPayloadBytes(2_800_000)).toBeLessThan(4_500_000);
     });
   });
 

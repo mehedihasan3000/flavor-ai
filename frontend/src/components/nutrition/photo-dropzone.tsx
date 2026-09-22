@@ -4,14 +4,38 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Camera, Picture, TriangleExclamation, Xmark, Sparkles } from "@gravity-ui/icons";
 import { Button } from "@/components/ui";
 
-/** Largest original file the picker accepts. Files in (10 MB, 15 MB] are
- * downscaled/compressed in-browser to fit the 10 MB transport limit. */
+/** Largest original file the picker accepts. */
 export const MAX_ORIGINAL_BYTES = 15 * 1024 * 1024; // 15 MB
-/** Decoded-image bytes the API accepts (backend `validateImageInput`). */
-export const TRANSPORT_BINARY_LIMIT_BYTES = 10 * 1024 * 1024; // 10 MB
-const TARGET_COMPRESSED_BYTES = 9 * 1024 * 1024; // 9 MB headroom for base64 overhead
-const MAX_COMPRESSED_DIMENSION = 2048;
+/**
+ * Binary ceiling for what is sent to the API as-is.
+ *
+ * Production runs on Vercel Functions, whose request/response body limit is a
+ * hard 4.5 MB (413 FUNCTION_PAYLOAD_TOO_LARGE at the edge, before Express/CORS
+ * ever run). Base64 inflates binary by ~33%, so a 5 MB photo becomes ~6.8 MB
+ * of JSON and a 7 MB photo ~9.5 MB — both rejected in production while working
+ * on localhost (Express `15mb`). Anything above this ceiling is
+ * downscaled/JPEG-compressed in-browser to fit. Small photos (1–2 MB) are
+ * untouched to preserve full analysis quality.
+ */
+export const VERCEL_SAFE_BINARY_LIMIT_BYTES = 2_800_000; // 2.8 MB binary ≈ 3.8 MB JSON, leaving ~400 KB headroom for filename/context/notes under the 4.2 MB preflight ceiling
+/** Hard JSON-payload ceiling checked before send (margin under Vercel 4.5 MB). */
+export const VERCEL_SAFE_JSON_LIMIT_BYTES = 4_200_000;
+const TARGET_COMPRESSED_BYTES = 2_800_000; // 2.8 MB binary ≈ 3.8 MB JSON
+const MAX_COMPRESSED_DIMENSION = 1600;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+/** Estimated JSON request size for a binary image (base64 + data-URL + envelope). */
+export function estimateJsonPayloadBytes(binaryBytes: number): number {
+  return Math.ceil(binaryBytes / 3) * 4 + 64 + 512;
+}
+
+/** True when a file must be client-compressed to survive the Vercel 4.5 MB cap. */
+export function needsCompressionForVercel(fileSizeBytes: number): boolean {
+  return (
+    fileSizeBytes > VERCEL_SAFE_BINARY_LIMIT_BYTES ||
+    estimateJsonPayloadBytes(fileSizeBytes) > VERCEL_SAFE_JSON_LIMIT_BYTES
+  );
+}
 
 function loadImageElement(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -49,18 +73,18 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 /**
- * Downscales + JPEG-compresses a large photo until it fits the transport
- * limit. Returns a data URL + mime type. Throws with a user-facing message
- * when compression is unsupported or cannot fit.
+ * Downscales + JPEG-compresses a photo until it fits the Vercel-safe
+ * transport budget (≈2.8 MB binary ≈ 3.8 MB JSON, under the 4.5 MB platform
+ * cap). 1600px on the long edge at JPEG q0.7–0.85 preserves food-vision
+ * quality (providers downsample internally anyway). Animated GIFs are reduced
+ * to their first frame — analysis only needs one frame. Returns a data URL +
+ * mime type. Throws with a user-facing message when compression is
+ * unsupported or cannot fit.
  */
 export async function compressImageFile(
   file: File,
+  targetBytes: number = TARGET_COMPRESSED_BYTES,
 ): Promise<{ dataUrl: string; mimeType: string }> {
-  if (file.type.toLowerCase() === "image/gif") {
-    throw new Error(
-      "GIFs above 10 MB can't be auto-compressed. Please convert to JPG/PNG or use a smaller file.",
-    );
-  }
   const img = await loadImageElement(file);
   const naturalWidth = img.naturalWidth || img.width;
   const naturalHeight = img.naturalHeight || img.height;
@@ -71,7 +95,7 @@ export async function compressImageFile(
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    throw new Error("Image compression isn't supported in this browser. Please use a photo under 10 MB.");
+    throw new Error("Image compression isn't supported in this browser. Please use a photo under 3 MB.");
   }
 
   const drawScaled = (scale: number) => {
@@ -79,32 +103,34 @@ export async function compressImageFile(
     const finalScale = Math.min(1, fit * scale);
     canvas.width = Math.max(1, Math.round(naturalWidth * finalScale));
     canvas.height = Math.max(1, Math.round(naturalHeight * finalScale));
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // JPEG has no alpha — paint white so transparent PNG/WebP don't go black.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   };
 
-  // Pass 1: full (capped) dimensions across JPEG qualities.
+  // Pass 1: capped dimensions across JPEG qualities.
   drawScaled(1);
-  for (const quality of [0.92, 0.82, 0.72, 0.6, 0.5]) {
+  for (const quality of [0.85, 0.78, 0.7, 0.62, 0.55]) {
     const blob = await canvasToBlob(canvas, "image/jpeg", quality);
-    if (blob && blob.size <= TARGET_COMPRESSED_BYTES) {
+    if (blob && blob.size <= targetBytes) {
       return { dataUrl: await blobToDataUrl(blob), mimeType: "image/jpeg" };
     }
   }
 
   // Pass 2: shrink dimensions progressively, mid quality.
   let scale = 0.8;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     drawScaled(scale);
-    const blob = await canvasToBlob(canvas, "image/jpeg", 0.72);
-    if (blob && blob.size <= TARGET_COMPRESSED_BYTES) {
+    const blob = await canvasToBlob(canvas, "image/jpeg", 0.7);
+    if (blob && blob.size <= targetBytes) {
       return { dataUrl: await blobToDataUrl(blob), mimeType: "image/jpeg" };
     }
     scale *= 0.8;
   }
 
   throw new Error(
-    "Even after compression this photo exceeds 10 MB. Please use a smaller image or crop it first.",
+    "Even after compression this photo exceeds the upload budget. Please use a smaller image or crop it first.",
   );
 }
 
@@ -182,13 +208,15 @@ export function PhotoDropzone({
       return;
     }
 
-    // Small enough to send as-is.
-    if (file.size <= TRANSPORT_BINARY_LIMIT_BYTES) {
+    // Small enough to survive the Vercel 4.5 MB platform cap as-is.
+    if (!needsCompressionForVercel(file.size)) {
       readDirect(file);
       return;
     }
 
-    // Large (10–15 MB): compress in-browser below the 10 MB transport limit.
+    // Larger photos (e.g. 5–7 MB raw → ~7–9.5 MB JSON) would be rejected by
+    // Vercel with 413 before reaching the API — compress in-browser first.
+    // This is the same path that already made >10 MB uploads work.
     setIsCompressing(true);
     compressImageFile(file)
       .then(({ dataUrl, mimeType }) => {
@@ -258,7 +286,7 @@ export function PhotoDropzone({
           role="status"
         >
           <span className="size-4 shrink-0 animate-spin rounded-full border-2 border-primary-strong/30 border-t-primary-strong" />
-          <span>Compressing large photo (10–15 MB) to fit the 10 MB limit…</span>
+          <span>Optimizing photo for upload… (keeps quality, fits secure limits)</span>
         </div>
       )}
 
@@ -318,7 +346,7 @@ export function PhotoDropzone({
           </h3>
           <p className="mt-1 text-sm text-subtle-foreground max-w-sm">
             Drag & drop an image here, or browse from your device. Supported: JPG, PNG, WebP, GIF
-            (max 15 MB — larger photos auto-compress below 10 MB).
+            (max 15 MB — larger photos are auto-optimized; GIFs analyze as a still frame).
           </p>
           <div className="mt-4">
             <Button
