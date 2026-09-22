@@ -19,6 +19,9 @@ const AUTH_INLINE_LINKS = [
 const MORE_LINKS = [
   { href: "/diet-plan", label: "Diet Plan" },
   { href: "/favorites", label: "Favorites" },
+  { href: "/pantry", label: "Pantry" },
+  { href: "/meal-plan", label: "Meal Plan" },
+  { href: "/grocery", label: "Grocery" },
 ] as const;
 
 const PROFILE_MENU_LINKS = [

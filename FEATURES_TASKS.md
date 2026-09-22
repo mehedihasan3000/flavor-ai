@@ -209,7 +209,7 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
       (convertible-unit merge, exact-duplicate sum, returns per-item results; skips + reports already-moved items).
 - [x] `backend/src/routes/pantry.ts` — wire §1.2 rows with `requireAuth` + `validateBody`/`validateQuery`/
       **`validateParams` on every `:id` route**; export `pantryRouter`. **Do NOT mount in `v1.ts`** (Lead does it).
-- [ ] Low-stock flag is **derived** (`threshold != null && quantity <= threshold`), never stored.
+- [x] Low-stock flag is **derived** (`threshold != null && quantity <= threshold`), never stored. `[Lead integration] Verified in code (`toPantryItemResponse`, `pantryController.ts:78-91`).
 
 ### A3. Frontend (pages + components)
 
@@ -240,7 +240,7 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
 
 ### B1. Backend model + validation
 
-- [ ] `backend/src/models/MealPlan.ts` — `userId (index)`, `name (default "My Week")`,
+- [x] `backend/src/models/MealPlan.ts` — `userId (index)`, `name (default "My Week")`,
       `weekStartDate/weekEndDate (Date, UTC midnight, §1.1)`, `status: active|archived (default active)` +
       **`isFavorite: boolean (default false)`** — favorite is a flag, not a status (a plan can be both active and favorite),
       `constraints` (snapshotted: `{ days, mealsPerDay, servings, calorieTarget?, proteinTargetGrams?, dietaryLabels?, cuisine?, budget?, notes? }`),
@@ -248,69 +248,69 @@ Lead produces the frozen shapes **before** Dev A/B/C write feature code. Keep it
       (subdoc `_id` serves as `mealId`),
       timestamps. Index `{ userId: 1, createdAt: -1 }`. **Slot uniqueness:** at most one meal per
       `(date, mealType)` per plan — enforced in Zod (refinement on create/update), so `swap` is never ambiguous.
-- [ ] Zod in `// ─── MealPlan (Dev B) ───`: `MealPlanConstraints`, `MealPlanMealInput`,
+- [x] Zod in `// ─── MealPlan (Dev B) ───`: `MealPlanConstraints`, `MealPlanMealInput`,
       `CreateMealPlanInput` (meals can be empty for AI flow), `UpdateMealPlanInput`,
       `AIGenerateMealPlanInput` (days 1–7 default 7, mealsPerDay subset default `[breakfast,lunch,dinner]`,
       servings 1–20 default 2, calorieTarget?, proteinTargetGrams?, dietaryLabels?, cuisine?, maxCookingTimeMinutes?,
       prioritizePantry? default true, avoidIngredients?, budget?, notes? sanitized ≤500),
       `SwapMealInput` (`{ mealId: ObjectIdString, notes? }` — exactly one meal, addressed by id).
-- [ ] Dates validated (`weekEndDate > weekStartDate`, meal dates inside range, `YYYY-MM-DD` in → UTC midnight);
+- [x] Dates validated (`weekEndDate > weekStartDate`, meal dates inside range, `YYYY-MM-DD` in → UTC midnight);
       `recipeId`s must exist and be `published` (reuse `utils/recipeAccess.ts` pattern); owner-or-self only.
 
 ### B2. Manual CRUD routes (deterministic — no AI)
 
-- [ ] `backend/src/controllers/mealPlanController.ts` — `listPlans` (paginated envelope; `?isFavorite=true` filter for the Favorites tab),
+- [x] `backend/src/controllers/mealPlanController.ts` — `listPlans` (paginated envelope; `?isFavorite=true` filter for the Favorites tab),
       `createPlan`, `getPlan` (**single-query** recipe hydration per §0.3.10; tolerate deleted recipe →
       meal shows `recipe: null` + `missing: true`, never 500),
       `updatePlan` (move meal = change `date/mealType` with slot-uniqueness re-check; servings stored only),
       `deletePlan`. All scoped `{ _id, userId }` (cross-user → 404).
-- [ ] `backend/src/routes/mealPlans.ts` — wire manual rows with `requireAuth` + `validateParams` on `:id`; **do NOT mount** (Lead does it).
+- [x] `backend/src/routes/mealPlans.ts` — wire manual rows with `requireAuth` + `validateParams` on `:id`; **do NOT mount** (Lead does it).
 
 ### B3. AI generation / swap / optimize (`services/mealPlanService.ts`, reuses Groq patterns from `aiService.ts`)
 
-- [ ] Candidate selection (deterministic, bounded): filter published recipes by diet/cuisine/time prefs → cap **~30**
+- [x] Candidate selection (deterministic, bounded): filter published recipes by diet/cuisine/time prefs → cap **~30**
       summaries (`id,title,tags,cuisine,category,6 key ingredients,per-serving kcal+protein`). Fetch caller pantry
       (`PantryItem.find({userId})`, limit 100) + profile prefs. **Never send full DB to the LLM.**
-- [ ] `generateMealPlan(input, userId)`: system/user prompt split (retrieved pantry+recipes labeled as *data*,
+- [x] `generateMealPlan(input, userId)`: system/user prompt split (retrieved pantry+recipes labeled as *data*,
       never instructions — prompt-injection rule); instruct week-level optimization (reuse, leftovers, variety,
       macro targets as selection pressure, not post-hoc math); `response_format: {type:"json_object"}`,
       timeout `AI_REQUEST_TIMEOUT_MS`; Zod-validate output; **discard any `recipeId` outside the candidate pool**;
       502/504 `AI_PROVIDER_ERROR` on failure/invalid (never store invalid).
-- [ ] `swapMeal(planId, { mealId }, userId)`: re-rank candidates **excluding** the current recipe for that slot,
+- [x] `swapMeal(planId, { mealId }, userId)`: re-rank candidates **excluding** the current recipe for that slot,
       replace only that meal, keep everything else byte-identical.
-- [ ] `optimizePlan(planId, userId)`: deterministic scoring first (pantry-overlap count, distinct-ingredient count,
+- [x] `optimizePlan(planId, userId)`: deterministic scoring first (pantry-overlap count, distinct-ingredient count,
       kcal/protein distance to targets using stored recipe nutrition — **null nutrition is skipped, never summed**),
       AI only re-orders/swaps within constraints; never violates explicit avoid-lists or diet labels.
-- [ ] Wire `POST /meal-plans/ai-generate`, `POST /meal-plans/:id/swap-meal`, `POST /meal-plans/:id/optimize`
+- [x] Wire `POST /meal-plans/ai-generate`, `POST /meal-plans/:id/swap-meal`, `POST /meal-plans/:id/optimize`
       with `requireAuth + aiRateLimiter + validateBody` (+ `validateParams` on `:id`).
-- [ ] Cost rule: move/remove/servings-change = pure DB writes, **zero AI calls**. Leftover-awareness = prompt-level
+- [x] Cost rule: move/remove/servings-change = pure DB writes, **zero AI calls**. Leftover-awareness = prompt-level
       reasoning over previous-day proteins (no fake quantities — use recipe servings as the unit).
-- [ ] Family preferences (FEATURES 1.7): implement as free-text `notes` + `dietaryLabels` intersection in v1
+- [x] Family preferences (FEATURES 1.7): implement as free-text `notes` + `dietaryLabels` intersection in v1
       (no household model — deferred, see §6).
 
 ### B4. Frontend
 
-- [ ] `lib/types.ts` + `api.ts` — `MealPlan`, `MealPlanConstraints`, `listMealPlans()`, `createMealPlan()`,
+- [x] `lib/types.ts` + `api.ts` — `MealPlan`, `MealPlanConstraints`, `listMealPlans()`, `createMealPlan()`,
       `getMealPlan()`, `updateMealPlan()`, `deleteMealPlan()`, `aiGenerateMealPlan()`, `swapMeal()`, `optimizeMealPlan()`.
-- [ ] `frontend/src/app/meal-plan/page.tsx` (list: name, date range, status tabs All/Archived + Favorites filter via `?isFavorite=true`) +
+- [x] `frontend/src/app/meal-plan/page.tsx` (list: name, date range, status tabs All/Archived + Favorites filter via `?isFavorite=true`) +
       `frontend/src/app/meal-plan/[id]/page.tsx` (weekly grid Mon–Sun × Breakfast/Lunch/Dinner + snacks;
       per-meal: recipe link, servings, Swap / Remove / Move / View actions; header: AI Generate, Optimize,
       Save-as-favorite (`isFavorite` toggle, never a status change), Generate-grocery-list link to `/grocery?plan=<id>`).
-- [ ] AI generate modal: days, meals/day, servings, calorie+protein targets, diet, cuisine, time limit,
+- [x] AI generate modal: days, meals/day, servings, calorie+protein targets, diet, cuisine, time limit,
       avoid list, budget, "use my pantry" toggle. Nutrition summary row computed deterministically from
       populated recipes (**null-nutrition recipes show "—" and are excluded from totals, never `NaN`**).
       Allergen/dietary warning banners on AI output (DoD §8 — same rule as generator/recipe views).
       All states (empty/AI-failure/invalid-response) handled.
-- [ ] **Do NOT build grocery UI here** — only link to it.
+- [x] **Do NOT build grocery UI here** — only link to it.
 
 ### B5. Tests (Dev B)
 
-- [ ] `tests/mealPlan.test.ts`: manual create/get/update/move/servings/delete, out-of-range date 400,
+- [x] `tests/mealPlan.test.ts`: manual create/get/update/move/servings/delete, out-of-range date 400,
       duplicate-slot 400, unpublished-recipe 404, cross-user 404 (incl. admin), deleted-recipe-tolerant read,
       malformed `:id` 400, `isFavorite` toggle preserves `status`.
-- [ ] `tests/mealPlanAI.test.ts` (mocked Groq fetch): happy-path stores valid plan; hallucinated `recipeId`
+- [x] `tests/mealPlanAI.test.ts` (mocked Groq fetch): happy-path stores valid plan; hallucinated `recipeId`
       discarded; invalid JSON → 502 and nothing stored; swap changes exactly one meal; timeout → 504.
-- [ ] Gate: build ✓ · lint ✓ · `npx vitest run tests/mealPlan.test.ts tests/mealPlanAI.test.ts` ✓.
+- [x] Gate: build ✓ · lint ✓ · `npx vitest run tests/mealPlan.test.ts tests/mealPlanAI.test.ts` ✓.
 
 ---
 
@@ -321,52 +321,52 @@ fixtures until A/B land; import `normalizeIngredientKey` + `units.ts` from Dev A
 
 ### C1. Pure logic first (`backend/src/services/groceryService.ts` — zero DB, zero AI, fully unit-tested)
 
-- [ ] `consolidateRequirements(meals: [{ ingredients: [{name,quantity?,unit?}], servingsScale }]): ConsolidatedItem[]`
+- [x] `consolidateRequirements(meals: [{ ingredients: [{name,quantity?,unit?}], servingsScale }]): ConsolidatedItem[]`
       (`{ key, name, quantity, unit /* canonical base unit */, category?, sourceRecipeIds[], estimated }`) —
       key = `normalizeIngredientKey(name)+'|'+toBaseUnit(unit).base` (unknown/imperial units: `key+'|'+rawUnit`,
       never merged across units); scale `quantity × servingsScale`; sum same-key;
       missing quantity → `quantity: 1, unit: 'pcs', estimated: true`; **never merge incompatible units** (`pcs` vs `g` stay separate lines).
-- [ ] `subtractPantry(requirements, pantryItems): { toBuy: ConsolidatedItem[], covered: ConsolidatedItem[] }` —
+- [x] `subtractPantry(requirements, pantryItems): { toBuy: ConsolidatedItem[], covered: ConsolidatedItem[] }` —
       `toBuy = max(0, required − pantry)` per key+convertible-unit (via Dev-A `units.ts`; `null` = incompatible =
       no subtraction); fully-covered items excluded from `toBuy` but listed under `covered` for transparency.
       **This exact formula powers §5.**
-- [ ] `categorize(name): Category` — keyword map over the item name (extendable constant, no AI call, §1.1 precedence rule).
+- [x] `categorize(name): Category` — keyword map over the item name (extendable constant, no AI call, §1.1 precedence rule).
 
 ### C2. Backend model + routes
 
-- [ ] `backend/src/models/GroceryList.ts` — `userId (index)`, `mealPlanId (ObjectId ref MealPlan|null)`,
+- [x] `backend/src/models/GroceryList.ts` — `userId (index)`, `mealPlanId (ObjectId ref MealPlan|null)`,
       `name`, `budget? (≥0, display only)`, `status: active|archived (default active)`,
       `items[]` `{ ingredientKey, name (sanitized), quantity, unit, category, sourceRecipeIds[], isPurchased (default false), isManual (default false), estimated (default false), movedToPantry (default false) }`,
       timestamps. Index `{ userId: 1, createdAt: -1 }`.
       (No `estimatedCost` in v1 — reserved for Phase 4 with real price data; never fabricated. See §6.)
-- [ ] Zod in `// ─── Grocery (Dev C) ───`: `GenerateGroceryInput` (`{ mealPlanId: ObjectIdString }`),
+- [x] Zod in `// ─── Grocery (Dev C) ───`: `GenerateGroceryInput` (`{ mealPlanId: ObjectIdString }`),
       `AddGroceryItemInput`, `UpdateGroceryItemInput` (`quantity? ≥ 0`, `unit?`, `category?`, `isPurchased?`),
       `UpdateGroceryListInput` (`name?, budget?, status?`).
-- [ ] `backend/src/controllers/groceryController.ts`:
+- [x] `backend/src/controllers/groceryController.ts`:
       - `generateFromMealPlan` — **single-query** recipe load (§0.3.10), scale, consolidate, subtract pantry, save.
       - `recalculate` (body `{}`) — re-run math, **preserve** `isManual` items verbatim + `isPurchased`/`movedToPantry`
         flags matched by **`ingredientKey`+canonical unit** (never bare key — a `500g` flag must not leak onto a `2pcs` line).
       - `addManualItem`, `updateItem`, `deleteItem`, `clearPurchased`, `purchasedToPantry`
         (calls Dev-A `upsertPantryFromGrocery`, never the model — §1.4).
-- [ ] `backend/src/routes/groceryLists.ts` — wire §1.2 rows with `requireAuth` + `validateParams`; **do NOT mount** (Lead does it).
+- [x] `backend/src/routes/groceryLists.ts` — wire §1.2 rows with `requireAuth` + `validateParams`; **do NOT mount** (Lead does it).
 
 ### C3. Frontend
 
-- [ ] `lib/types.ts` + `api.ts` — `GroceryList`, `GroceryItem`, `generateGroceryList()`, `recalculateGroceryList()`,
+- [x] `lib/types.ts` + `api.ts` — `GroceryList`, `GroceryItem`, `generateGroceryList()`, `recalculateGroceryList()`,
       `clearPurchased()`, item CRUD + `markPurchased()`, `purchasedToPantry(itemIds)`.
-- [ ] `frontend/src/app/grocery/page.tsx` (list) + `frontend/src/app/grocery/[id]/page.tsx` (checklist grouped by
+- [x] `frontend/src/app/grocery/page.tsx` (list) + `frontend/src/app/grocery/[id]/page.tsx` (checklist grouped by
       category: checkbox persists `isPurchased`, qty edit, manual-add input, clear-purchased, recalculate button,
       "Add purchased to pantry" explicit button with item selection, covered-by-pantry note, budget line
       showing `budget` vs item count only — no cost claims). Mobile-first checklist.
-- [ ] Entry from meal-plan detail (`/grocery?plan=<id>` pre-selects plan in the generate form — §0.4.2).
+- [x] Entry from meal-plan detail (`/grocery?plan=<id>` pre-selects plan in the generate form — §0.4.2).
 
 ### C4. Tests (Dev C)
 
-- [ ] `tests/groceryMath.test.ts` (pure, no DB): 1+2+3 onions → 6; 1kg − 600g → 400g; fully-covered excluded + listed under `covered`;
+- [x] `tests/groceryMath.test.ts` (pure, no DB): 1+2+3 onions → 6; 1kg − 600g → 400g; fully-covered excluded + listed under `covered`;
       incompatible units not merged; imperial never merged; servings scaling; `estimated` flag on missing qty; category grouping.
-- [ ] `tests/grocery.test.ts` (integration): generate from plan (single-query), recalculate after plan change preserves manual
+- [x] `tests/grocery.test.ts` (integration): generate from plan (single-query), recalculate after plan change preserves manual
       items + purchased flags per key+unit, purchased→pantry upsert + idempotent double-POST, cross-user 404, invalid ids 400/404.
-- [ ] Gate: build ✓ · lint ✓ · both suites ✓.
+- [x] Gate: build ✓ · lint ✓ · both suites ✓.
 
 ---
 
@@ -402,19 +402,19 @@ Then: consume 200g chicken → pantry 300g → next grocery run uses 300g.
 
 ## 7. Integration order (Team Leader only)
 
-1. [ ] Merge `feature/pantry` → mount `pantryRouter` in `v1.ts`, add `PantryItem` **+ `MealPlan` + `GroceryList`**
+1. [x] Merge `feature/pantry` → mount `pantryRouter` in `v1.ts`, add `PantryItem` **+ `MealPlan` + `GroceryList`** `[2026-09-21] [Lead] \`pantryRouter\` mounted at \`/pantry\` (was already mounted); all three models present in \`syncIndexes.ts\`; suites \`pantry.test.ts\` + \`ingredientKey.test.ts\` + \`units.test.ts\` green.`
       to `syncIndexes.ts` as each lands (all three required — `autoIndex` is off in production, so any missing
       model ships without its `{ userId: 1, … }` indexes), run `npm run db:indexes` on staging, verify §5 pantry leg.
-2. [ ] Merge `feature/mealplan` → mount `mealPlansRouter`, verify AI generate + swap-single + fixture pantry.
-3. [ ] Merge `feature/grocery` → mount `groceryListsRouter`, verify the §1.4 service seam (no model import), verify full §5 loop.
-4. [ ] Triple-sync check: `backend/src/types/index.ts` ↔ `docs/API_CONTRACT.md` ↔ `frontend/src/lib/types.ts`
+2. [x] Merge `feature/mealplan` → mount `mealPlansRouter`, verify AI generate + swap-single + fixture pantry. `[2026-09-21] [Lead] Mounted at \`/meal-plans\` in \`v1.ts\`; \`MealPlanModel\` added to \`syncIndexes.ts\`; suites \`mealPlan.test.ts\` (15) + \`mealPlanAI.test.ts\` (6) green.`
+3. [x] Merge `feature/grocery` → mount `groceryListsRouter`, verify the §1.4 service seam (no model import), verify full §5 loop. `[2026-09-21] [Lead] Replaced stub \`MealPlan\` schema with real \`MealPlanModel\` import; pantry reads in \`groceryController\` + \`mealPlanService\` routed via new Dev-A \`pantryService.listPantryForUser\` (B/C no longer import \`PantryItem\` model); fixed \`grocery.test.ts\` fixture to the real schema (was coupled to the stub); §5 math covered by \`groceryMath.test.ts\` (8) + \`grocery.test.ts\` (5) green.`
+4. [x] Triple-sync check: `backend/src/types/index.ts` ↔ `docs/API_CONTRACT.md` ↔ `frontend/src/lib/types.ts`
       (every new DTO present in all three; error envelope on all non-2xx; all lists return the paginated envelope).
-5. [ ] Add `/pantry`, `/meal-plan`, `/grocery` to `navbar.tsx` (More menu / mobile list) + cross-links
+5. [x] Add `/pantry`, `/meal-plan`, `/grocery` to `navbar.tsx` (More menu / mobile list) + cross-links
       (pantry "Find recipes" → generator; meal-plan → grocery; grocery → pantry).
-6. [ ] Full gates: backend `build → lint → test`, frontend `build → lint → test`; manual §5 scenario;
+6. [x] Full gates: backend `build → lint → test`, frontend `build → lint → test`; manual §5 scenario;
       security sweep (ownership on every route, `validateParams` on every `:id`, Zod on every body,
       sanitize on every free-text field, AI-output validation, no secrets client-side).
-7. [ ] Append dated `[YYYY-MM-DD] [Lead]` integration notes to `TASKS.md`; update `docs/API_CONTRACT.md`.
+7. [x] Append dated `[YYYY-MM-DD] [Lead]` integration notes to `TASKS.md`; update `docs/API_CONTRACT.md`. `[2026-09-21] [Lead] Done — see TASKS.md notes.`
 
 ## 8. Definition of Done (every checkbox)
 
@@ -425,6 +425,37 @@ contract triple in sync (types ↔ contract doc ↔ frontend types) · no critic
 
 ## 9. Draft API appendix (dev scratch — Lead moves to `docs/API_CONTRACT.md` at integration)
 
-- [ ] **§9A (Dev A):** pantry endpoint proposals (shapes, query params, error cases) live here until merge.
-- [ ] **§9B (Dev B):** meal-plan endpoint proposals live here until merge.
-- [ ] **§9C (Dev C):** grocery endpoint proposals live here until merge.
+- [x] **§9A (Dev A):** pantry endpoint proposals — `[Lead integration] moved into `docs/API_CONTRACT.md` (`/pantry` section) on 2026-09-21; nothing pending.
+- [x] **§9B (Dev B):** meal-plan endpoint proposals (implemented on `feature/mealplan`, [2026-09-21] — Lead moves to `docs/API_CONTRACT.md` at integration).
+
+  Base path `/api/v1/meal-plans` (Lead mounts `mealPlansRouter` there; routes use relative paths). All rows `requireAuth`. Dates are `YYYY-MM-DD` strings (UTC midnight server-side); week dates and meal dates echo as `YYYY-MM-DD`. Error envelope on all non-2xx. Cross-user (incl. admin) → 404 `NOT_FOUND`; malformed `:id` → 400 `VALIDATION_ERROR`.
+
+  ```text
+  GET    /meal-plans?status=&isFavorite=&page=&limit=
+    → 200 { items: MealPlan[], page, limit, total, totalPages }
+    (list items are NOT recipe-hydrated; use GET /:id for cards)
+  POST   /meal-plans { name?, weekStartDate, weekEndDate, status?, isFavorite?, constraints?, meals? }
+    → 201 { plan } (hydrated); meals may be [] (AI shell)
+    → 404 when a recipeId is missing/unpublished; 400 on out-of-range date, duplicate (date,mealType) slot, weekEndDate <= weekStartDate
+  GET    /meal-plans/:id → 200 { plan } with recipe cards; deleted recipe → { recipe: null, missing: true }
+  PATCH  /meal-plans/:id { name?, weekStartDate?, weekEndDate?, status?, isFavorite?, constraints?, meals? }
+    → 200 { plan }; meals = FULL-array replace (move/remove/servings); merged week re-validated
+  DELETE /meal-plans/:id → 200 { success: true }
+  POST   /meal-plans/ai-generate (aiRateLimiter)
+    { name?, weekStartDate, weekEndDate?, days=7, mealsPerDay=[breakfast,lunch,dinner], servings=2,
+      calorieTarget?, proteinTargetGrams?, dietaryLabels?=[], cuisine?, maxCookingTimeMinutes?,
+      prioritizePantry=true, avoidIngredients?=[], budget?, notes? }
+    → 201 { plan } (source "ai", constraints snapshot); weekEndDate defaults to start+days−1
+    → 404 when no published recipes match; 502/504 on provider failure/invalid output (nothing stored)
+  POST   /meal-plans/:id/swap-meal (aiRateLimiter) { mealId, notes? }
+    → 200 { plan }; exactly one meal replaced (servings/notes kept, source "swap")
+  POST   /meal-plans/:id/optimize (aiRateLimiter, body {}) → 200 { plan }
+    (tolerant per-slot merge; changed meals source "optimized"; empty plan → 400)
+  ```
+
+  `MealPlan { id, userId, name, weekStartDate, weekEndDate, status: active|archived, isFavorite,
+  constraints { days?, mealsPerDay?, servings?, calorieTarget?, proteinTargetGrams?, dietaryLabels?,
+  cuisine?, budget?, notes? } | null, meals: Meal[], createdAt, updatedAt }`.
+  `Meal { mealId, date, mealType, recipeId, servings 1–20, source: manual|ai|swap|optimized,
+  notes, recipe: RecipeCard | null, missing }`.
+- [x] **§9C (Dev C):** grocery endpoint proposals — `[Lead integration] moved into `docs/API_CONTRACT.md` (`/grocery-lists` section) on 2026-09-21; nothing pending.

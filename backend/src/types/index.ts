@@ -787,9 +787,336 @@ export type PantrySearchQuery = z.infer<typeof PantrySearchQuery>;
 // below. Other workstreams do not edit.
 // ---------------------------------------------------------------------------
 
+/** Plan lifecycle: `active` <-> `archived`. Favorite is a separate flag. */
+export const MEAL_PLAN_STATUS = ["active", "archived"] as const;
+
+export const MealPlanStatus = z.enum(MEAL_PLAN_STATUS);
+
+export type MealPlanStatus = z.infer<typeof MealPlanStatus>;
+
+/** Meal origin: manual placement, AI generation, single-meal swap, optimization pass. */
+export const MEAL_PLAN_MEAL_SOURCE = ["manual", "ai", "swap", "optimized"] as const;
+
+export const MealPlanMealSource = z.enum(MEAL_PLAN_MEAL_SOURCE);
+
+export type MealPlanMealSource = z.infer<typeof MealPlanMealSource>;
+
+/**
+ * Parses a `YYYY-MM-DD` string into a UTC-midnight Date.
+ * Returns `null` for wrong format or impossible calendar dates.
+ * Unlike pantry expiry, plan dates may lie in the past (history / favorites reuse).
+ */
+function parsePlanDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+/** `YYYY-MM-DD` string that is a real calendar date (past, present, or future). */
+const PlanDateString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD format.")
+  .refine((value) => parsePlanDate(value) !== null, {
+    message: "Date must be a valid calendar date.",
+  });
+
+/** Snapshotted generation constraints stored on the plan (FEATURES_TASKS.md §B1). */
+export const MealPlanConstraints = z.object({
+  days: z.number().int().min(1).max(7).optional(),
+  mealsPerDay: z.array(z.enum(MEAL_TYPE)).optional(),
+  servings: z.number().int().min(1).max(20).optional(),
+  calorieTarget: z.number().int().positive().optional(),
+  proteinTargetGrams: z.number().int().positive().optional(),
+  dietaryLabels: z.array(z.enum(DIETARY_LABEL)).optional(),
+  cuisine: z.string().max(50).optional(),
+  budget: z.number().nonnegative().optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export type MealPlanConstraints = z.infer<typeof MealPlanConstraints>;
+
+/** One placed meal. Subdoc `_id` serves as `mealId` for swap/remove/move. */
+export const MealPlanMealInput = z.object({
+  date: PlanDateString,
+  mealType: z.enum(MEAL_TYPE),
+  recipeId: ObjectIdString,
+  servings: z.number().int().min(1).max(20),
+  source: z.enum(MEAL_PLAN_MEAL_SOURCE).default("manual"),
+  notes: z.string().max(200).optional(),
+});
+
+export type MealPlanMealInput = z.infer<typeof MealPlanMealInput>;
+
+/**
+ * Update variant: `source` stays optional with NO default so a full-array
+ * PATCH that omits `source` preserves provenance instead of resetting to
+ * `"manual"`. The controller fills missing `source` from the stored meal.
+ */
+export const MealPlanMealUpdateInput = z.object({
+  date: PlanDateString,
+  mealType: z.enum(MEAL_TYPE),
+  recipeId: ObjectIdString,
+  servings: z.number().int().min(1).max(20),
+  source: z.enum(MEAL_PLAN_MEAL_SOURCE).optional(),
+  notes: z.string().max(200).optional(),
+});
+
+export type MealPlanMealUpdateInput = z.infer<typeof MealPlanMealUpdateInput>;
+
+/**
+ * Slot-uniqueness check shared by create/update refinements: at most one
+ * meal per `(date, mealType)` per plan, so swap-by-`mealId` is never ambiguous.
+ */
+function assertUniqueMealSlots(
+  meals: Array<{ date: string; mealType: string }>,
+  ctx: z.RefinementCtx,
+): void {
+  const seen = new Set<string>();
+  meals.forEach((meal, index) => {
+    const slot = `${meal.date}|${meal.mealType}`;
+    if (seen.has(slot)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Duplicate meal slot: only one meal per date and meal type is allowed.",
+        path: ["meals", index, "mealType"],
+      });
+    }
+    seen.add(slot);
+  });
+}
+
+/** `weekEndDate > weekStartDate`, every meal date inside range, unique slots. */
+function refineMealPlanRange(
+  value: {
+    weekStartDate?: string;
+    weekEndDate?: string;
+    meals?: Array<{ date: string; mealType: string }>;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const { weekStartDate, weekEndDate, meals } = value;
+  if (weekStartDate !== undefined && weekEndDate !== undefined) {
+    const start = parsePlanDate(weekStartDate);
+    const end = parsePlanDate(weekEndDate);
+    if (start !== null && end !== null && end.getTime() <= start.getTime()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "weekEndDate must be after weekStartDate.",
+        path: ["weekEndDate"],
+      });
+    }
+    if (meals !== undefined && start !== null && end !== null) {
+      meals.forEach((meal, index) => {
+        const date = parsePlanDate(meal.date);
+        if (
+          date !== null &&
+          (date.getTime() < start.getTime() || date.getTime() > end.getTime())
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Meal date must fall inside the plan week.",
+            path: ["meals", index, "date"],
+          });
+        }
+      });
+    }
+  }
+  if (meals !== undefined) assertUniqueMealSlots(meals, ctx);
+}
+
+export const CreateMealPlanInput = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    weekStartDate: PlanDateString,
+    weekEndDate: PlanDateString,
+    status: z.enum(MEAL_PLAN_STATUS).default("active"),
+    isFavorite: z.boolean().default(false),
+    constraints: MealPlanConstraints.optional(),
+    /** May be empty — the AI-generate flow creates the shell first. */
+    meals: z.array(MealPlanMealInput).default([]),
+  })
+  .superRefine(refineMealPlanRange);
+
+export type CreateMealPlanInput = z.infer<typeof CreateMealPlanInput>;
+
+/**
+ * Explicitly optional with NO defaults: unlike `CreateXInput.partial()`,
+ * parsing `{}` must not inject `status: "active"` / `meals: []` and wipe
+ * stored values on PATCH. Range/slot checks run on the fields present;
+ * the controller re-validates the merged week before saving.
+ */
+export const UpdateMealPlanInput = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    weekStartDate: PlanDateString.optional(),
+    weekEndDate: PlanDateString.optional(),
+    status: z.enum(MEAL_PLAN_STATUS).optional(),
+    isFavorite: z.boolean().optional(),
+    constraints: MealPlanConstraints.optional(),
+    meals: z.array(MealPlanMealUpdateInput).optional(),
+  })
+  .superRefine(refineMealPlanRange);
+
+export type UpdateMealPlanInput = z.infer<typeof UpdateMealPlanInput>;
+
+/**
+ * `YYYY-MM-DD` + N days (UTC), returned as `YYYY-MM-DD`.
+ * Local copy (service has its own) so the AI range refinement can compare
+ * `weekEndDate` against `start + days - 1` without importing services.
+ */
+function addDaysToYMD(startYMD: string, days: number): string {
+  const [year, month, day] = startYMD.split("-").map(Number);
+  const base = Date.UTC(year, month - 1, day);
+  return new Date(base + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+export const AIGenerateMealPlanInput = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    /** Anchor week; `weekEndDate` may be omitted — server computes `start + days − 1`. */
+    weekStartDate: PlanDateString,
+    weekEndDate: PlanDateString.optional(),
+    days: z.number().int().min(1).max(7).default(7),
+    mealsPerDay: z
+      .array(z.enum(MEAL_TYPE))
+      .min(1)
+      .max(5)
+      .default(["breakfast", "lunch", "dinner"])
+      .refine((types) => new Set(types).size === types.length, {
+        message: "mealsPerDay must not contain duplicates.",
+      }),
+    servings: z.number().int().min(1).max(20).default(2),
+    calorieTarget: z.number().int().positive().optional(),
+    proteinTargetGrams: z.number().int().positive().optional(),
+    dietaryLabels: z.array(z.enum(DIETARY_LABEL)).default([]),
+    cuisine: z.string().max(50).optional(),
+    maxCookingTimeMinutes: z.number().int().positive().optional(),
+    prioritizePantry: z.boolean().default(true),
+    avoidIngredients: z.array(z.string().trim().min(1).max(100)).max(50).default([]),
+    budget: z.number().nonnegative().optional(),
+    notes: z.string().max(500).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.weekEndDate === undefined) return;
+    const start = parsePlanDate(value.weekStartDate);
+    const end = parsePlanDate(value.weekEndDate);
+    if (start !== null && end !== null) {
+      if (end.getTime() <= start.getTime()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "weekEndDate must be after weekStartDate.",
+          path: ["weekEndDate"],
+        });
+        return;
+      }
+      const expected = addDaysToYMD(value.weekStartDate, value.days - 1);
+      if (value.weekEndDate !== expected) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `weekEndDate must equal weekStartDate + days - 1 (${expected}).`,
+          path: ["weekEndDate"],
+        });
+      }
+    }
+  });
+
+export type AIGenerateMealPlanInput = z.infer<typeof AIGenerateMealPlanInput>;
+
+/** Exactly one meal, addressed by subdoc `_id`; everything else stays identical. */
+export const SwapMealInput = z.object({
+  mealId: ObjectIdString,
+  notes: z.string().max(500).optional(),
+});
+
+export type SwapMealInput = z.infer<typeof SwapMealInput>;
+
+/** List filter: `?status=` tabs + `?isFavorite=true` Favorites tab. */
+export const MealPlanListQuery = PaginationQuery.extend({
+  status: z.enum(MEAL_PLAN_STATUS).optional(),
+  isFavorite: QueryBoolean.optional(),
+});
+
+export type MealPlanListQuery = z.infer<typeof MealPlanListQuery>;
+
 // ---------------------------------------------------------------------------
 // Grocery (Dev C) — Smart Grocery System (FEATURES_TASKS.md §4)
 // Canonical base units via Dev-A utils/units.ts; no estimatedCost in v1 (§1.1).
-// Dev C appends Generate / Add / Update-item / Update-list inputs below.
-// Other workstreams do not edit.
+// Dev C appends status enum + Generate / Add / Update-item / Update-list /
+// Purchased-to-pantry inputs below. Other workstreams do not edit.
 // ---------------------------------------------------------------------------
+
+/** Grocery list lifecycle: active shopping vs archived history. */
+export const GROCERY_LIST_STATUS = ["active", "archived"] as const;
+
+export type GroceryListStatus = (typeof GROCERY_LIST_STATUS)[number];
+
+/**
+ * Generate a grocery list from a meal plan (body `GenerateGroceryInput
+ * { mealPlanId }`). Scaling, consolidation, and pantry subtraction run
+ * deterministically in `services/groceryService.ts` — never via the LLM.
+ */
+export const GenerateGroceryInput = z.object({
+  mealPlanId: ObjectIdString,
+});
+
+export type GenerateGroceryInput = z.infer<typeof GenerateGroceryInput>;
+
+/** Manual (non-plan) grocery item. `isManual: true` is set server-side. */
+export const AddGroceryItemInput = z.object({
+  name: z.string().trim().min(1, "Item name is required.").max(100),
+  quantity: z.number().nonnegative("Quantity must be 0 or greater."),
+  unit: z.string().trim().min(1, "Unit is required.").max(30),
+  category: PantryCategory,
+});
+
+export type AddGroceryItemInput = z.infer<typeof AddGroceryItemInput>;
+
+/**
+ * Item edits: quantity, unit, category, purchased flag. All optional —
+ * an explicit `quantity` is taken as-is; a unit-only change converts the
+ * stored quantity when convertible (400 when incompatible), mirroring the
+ * pantry update flow. `name` is immutable (delete + re-add to rename).
+ */
+export const UpdateGroceryItemInput = z.object({
+  quantity: z.number().nonnegative("Quantity must be 0 or greater.").optional(),
+  unit: z.string().trim().min(1, "Unit is required.").max(30).optional(),
+  category: PantryCategory.optional(),
+  isPurchased: z.boolean().optional(),
+});
+
+export type UpdateGroceryItemInput = z.infer<typeof UpdateGroceryItemInput>;
+
+/** List rename / display-only budget / archive. Explicit `null` clears budget. */
+export const UpdateGroceryListInput = z.object({
+  name: z.string().trim().min(1, "List name is required.").max(120).optional(),
+  budget: z.number().nonnegative("Budget must be 0 or greater.").nullable().optional(),
+  status: z.enum(GROCERY_LIST_STATUS).optional(),
+});
+
+export type UpdateGroceryListInput = z.infer<typeof UpdateGroceryListInput>;
+
+/**
+ * Explicit purchased → pantry flow (body `PurchasedToPantryInput
+ * { itemIds }`, §1.4). Handled by Dev-A `upsertPantryFromGrocery`
+ * (convertible-unit merge, idempotent via `movedToPantry`).
+ */
+export const PurchasedToPantryInput = z.object({
+  itemIds: z
+    .array(ObjectIdString)
+    .min(1, "Select at least one item.")
+    .max(100, "Select at most 100 items at a time."),
+});
+
+export type PurchasedToPantryInput = z.infer<typeof PurchasedToPantryInput>;
