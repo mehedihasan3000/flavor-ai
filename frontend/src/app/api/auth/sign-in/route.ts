@@ -1,6 +1,23 @@
 import { NextResponse } from "next/server";
 import { mintAccessToken } from "@/lib/jwt";
 
+const DEFAULT_API_URL = "http://localhost:4000/api/v1";
+
+function getBackendBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!raw) return DEFAULT_API_URL;
+  return raw.replace(/\/+$/, "");
+}
+
+interface BackendAuthUser {
+  id: string;
+  providerId?: string | null;
+  email: string;
+  name: string;
+  role: "user" | "admin";
+  avatarUrl?: string | null;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -21,27 +38,65 @@ export async function POST(request: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const isAdmin = cleanEmail.startsWith("admin@") || cleanEmail.includes("admin");
-    const baseName = cleanEmail.split("@")[0] || "User";
-    const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-    
-    // Deterministic provider ID derived from email
-    const providerId = `usr_${Buffer.from(cleanEmail).toString("hex").slice(0, 24)}`;
+
+    // Verify credentials against the backend (source of truth). The backend
+    // returns 401 for unknown emails and wrong passwords — unknown users can
+    // NO LONGER log in. No token is minted until the backend confirms.
+    let backendUser: BackendAuthUser;
+    try {
+      const backendRes = await fetch(`${getBackendBaseUrl()}/auth/sign-in`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email: cleanEmail, password }),
+        cache: "no-store",
+      });
+      const backendData = await backendRes.json().catch(() => null);
+      if (!backendRes.ok) {
+        const safeMessage =
+          typeof backendData?.safeMessage === "string"
+            ? backendData.safeMessage
+            : "Invalid email or password.";
+        return NextResponse.json(
+          { safeMessage, validation: backendData?.validation },
+          { status: backendRes.status },
+        );
+      }
+      backendUser = (backendData as { user?: BackendAuthUser })?.user as BackendAuthUser;
+      if (!backendUser?.email) {
+        return NextResponse.json(
+          { safeMessage: "Invalid email or password." },
+          { status: 401 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { safeMessage: "Cannot reach the authentication service. Please try again." },
+        { status: 503 },
+      );
+    }
+
+    // Mint only after backend verification. Role/name come from the database —
+    // never derived from the email address (prevents privilege escalation).
+    const providerId =
+      backendUser.providerId ||
+      `usr_${Buffer.from(backendUser.email).toString("hex").slice(0, 24)}`;
 
     const token = mintAccessToken({
       sub: providerId,
-      email: cleanEmail,
-      name: displayName,
-      role: isAdmin ? "admin" : "user",
+      email: backendUser.email,
+      name: backendUser.name,
+      role: backendUser.role,
+      avatarUrl: backendUser.avatarUrl ?? null,
     });
 
     return NextResponse.json({
       token,
       user: {
-        id: providerId,
-        email: cleanEmail,
-        name: displayName,
-        role: isAdmin ? "admin" : "user",
+        id: backendUser.id,
+        email: backendUser.email,
+        name: backendUser.name,
+        role: backendUser.role,
+        avatarUrl: backendUser.avatarUrl ?? null,
       },
     });
   } catch (error) {

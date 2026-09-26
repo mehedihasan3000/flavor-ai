@@ -18,8 +18,11 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
+  signInWithGoogle: (credential: string) => Promise<void>;
   signOut: () => Promise<void>;
   setSession: (token: string, user: AuthUser) => void;
+  refresh: () => Promise<void>;
+  patchUser: (patch: Partial<AuthUser>) => void;
 }
 
 const STORAGE_KEY = "flavorai_auth_token";
@@ -48,6 +51,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(newToken);
     setUser(newUser);
   }, []);
+
+  const patchUser = useCallback((patch: Partial<AuthUser>) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const currentToken = (() => {
+      try {
+        return localStorage.getItem(STORAGE_KEY);
+      } catch {
+        return null;
+      }
+    })();
+    const effectiveToken = currentToken ?? token;
+    if (!effectiveToken) return;
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${effectiveToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const profile = (await res.json()) as {
+        id: string;
+        name: string;
+        email: string;
+        avatarUrl: string | null;
+        role: UserRole;
+      };
+      setUser((prev) => {
+        if (!prev) return prev;
+        // Only update if ids match (sanity), else keep prev
+        if (profile.id && profile.id !== prev.id) return prev;
+        return {
+          ...prev,
+          name: profile.name ?? prev.name,
+          email: profile.email ?? prev.email,
+          avatarUrl: profile.avatarUrl ?? null,
+          role: profile.role ?? prev.role,
+        };
+      });
+    } catch {
+      // silent — keep existing session
+    }
+  }, [token]);
 
   // Hydrate session on mount per React Compiler rules (state updates in promise callbacks only)
   useEffect(() => {
@@ -83,6 +134,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (data?.user) {
             setToken(storedToken);
             setUser(data.user);
+            // Enrich with full profile (avatarUrl etc.) — non-blocking but keeps navbar in sync
+            // if verify payload was stale. Failures are silent.
+            fetch(`${apiUrl}/users/me`, {
+              headers: {
+                Authorization: `Bearer ${storedToken}`,
+                Accept: "application/json",
+              },
+              cache: "no-store",
+            })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((profile: { id: string; name: string; email: string; avatarUrl: string | null; role: UserRole } | null) => {
+                if (!active || !profile) return;
+                setUser((prev) => {
+                  if (!prev || profile.id !== prev.id) return prev;
+                  return {
+                    ...prev,
+                    name: profile.name ?? prev.name,
+                    email: profile.email ?? prev.email,
+                    avatarUrl: profile.avatarUrl ?? null,
+                    role: profile.role ?? prev.role,
+                  };
+                });
+              })
+              .catch(() => {
+                // ignore enrichment failure
+              });
           } else {
             try {
               localStorage.removeItem(STORAGE_KEY);
@@ -195,6 +272,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [setSession],
   );
 
+  const signInWithGoogle = useCallback(
+    async (credential: string): Promise<void> => {
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.safeMessage || "Google sign-in failed. Please try again.");
+      }
+
+      const { token: newToken, user: newUser } = data as { token: string; user: AuthUser };
+
+      // Verify and hydrate against the backend database (same flow as email sign-in)
+      // Merge Google picture as fallback if backend still returns null (e.g. existing email user).
+      try {
+        const apiUrl = getApiBaseUrl();
+        const verifyRes = await fetch(`${apiUrl}/auth/token/verify`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken}`,
+            Accept: "application/json",
+          },
+        });
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          if (verifyData?.user) {
+            const backendUser = verifyData.user as AuthUser;
+            const merged: AuthUser = {
+              ...backendUser,
+              // Prefer backend's persisted avatar, fall back to Google's picture
+              avatarUrl: backendUser.avatarUrl ?? newUser.avatarUrl ?? null,
+              name: backendUser.name || newUser.name,
+            };
+            setSession(newToken, merged);
+
+            // If backend still has no avatar but Google provided one, persist it explicitly
+            // via PATCH /users/me (covers race where $setOnInsert enrichment was skipped).
+            if (!backendUser.avatarUrl && newUser.avatarUrl) {
+              fetch(`${apiUrl}/users/me`, {
+                method: "PATCH",
+                headers: {
+                  Authorization: `Bearer ${newToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ avatarUrl: newUser.avatarUrl }),
+              }).catch(() => {
+                // silent — avatar will still show from merged state
+              });
+            }
+            return;
+          }
+        }
+      } catch {
+        // Backend optional fallback
+      }
+
+      setSession(newToken, newUser);
+    },
+    [setSession],
+  );
+
   const signOut = useCallback(async (): Promise<void> => {
     const currentToken = token;
     try {
@@ -228,10 +369,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(token && user),
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
       setSession,
+      refresh,
+      patchUser,
     }),
-    [user, token, isLoading, signIn, signUp, signOut, setSession],
+    [user, token, isLoading, signIn, signUp, signInWithGoogle, signOut, setSession, refresh, patchUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

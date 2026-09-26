@@ -14,6 +14,7 @@ export interface AccessTokenClaims {
   email: string;
   name?: string;
   role?: UserRole;
+  avatarUrl?: string | null;
 }
 
 interface UserRecord {
@@ -67,6 +68,7 @@ export function verifyAccessToken(token: string): AccessTokenClaims {
       email: typeof decoded.email === "string" ? decoded.email : "",
       name: typeof decoded.name === "string" ? decoded.name : undefined,
       role: USER_ROLE.includes(decoded.role as UserRole) ? (decoded.role as UserRole) : "user",
+      avatarUrl: typeof decoded.avatarUrl === "string" ? decoded.avatarUrl : null,
     };
   } catch {
     throw new ApiError(401, "UNAUTHORIZED", "Invalid or expired token.");

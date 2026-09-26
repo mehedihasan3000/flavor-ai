@@ -15,3 +15,4 @@ export { Skeleton } from "./skeleton";
 export { Spinner } from "./spinner";
 export { TagInput, type TagInputProps } from "./tag-input";
 export { Textarea, type TextareaProps } from "./textarea";
+export { ToastProvider, useToast, type ToastItem, type ToastVariant } from "./toast";

@@ -26,6 +26,7 @@ export interface MintTokenPayload {
   email: string;
   name?: string;
   role?: "user" | "admin";
+  avatarUrl?: string | null;
 }
 
 /**
@@ -44,6 +45,7 @@ export function mintAccessToken(payload: MintTokenPayload): string {
     email: payload.email,
     name: payload.name ?? "User",
     role: payload.role ?? "user",
+    avatarUrl: payload.avatarUrl ?? null,
     iss: JWT_ISSUER,
     aud: JWT_AUDIENCE,
     iat: now,

@@ -31,6 +31,8 @@ Smoke test. Returns 200 when MongoDB connected, 503 otherwise.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+| POST | `/auth/sign-up` | public | Create email/password account (scrypt hash, FR-AUTH-01/07) |
+| POST | `/auth/sign-in` | public | Verify email/password → user context (FR-AUTH-02/07, no auto-create) |
 | POST | `/auth/token/verify` | public | Verify signed JWT → user context (lazily upserts the user) |
 | POST | `/auth/logout` | required | Revoke current session/token (stateless: client discards the token) |
 
@@ -41,6 +43,28 @@ after a Better Auth session is confirmed; the secret never reaches browser JS
 (SRS §9.4). The token subject (`sub`) is the Better Auth user id, stored on the
 `User` document as `providerId`. Verification lives in `backend/src/middleware/auth.ts`.
 
+**`POST /auth/sign-up` body** (`CredentialSignUpInput`):
+```json
+{ "name": "Ada Lovelace", "email": "ada@example.com", "password": "s3cretP@ss!" }
+```
+→ 201 `{ user: { id, providerId, name, email, role: "user", avatarUrl } }`.
+New accounts are ALWAYS `role: "user"` (never derived from the email).
+409 `CONFLICT` if the email is already registered with a password.
+Addresses that exist without a password (legacy mock / Google-only docs) can
+claim the address here — the first password is set and the stored `providerId`
+is reused. 400 on invalid shape. Passwords are scrypt-hashed, never returned.
+
+**`POST /auth/sign-in` body** (`CredentialSignInInput`):
+```json
+{ "email": "ada@example.com", "password": "s3cretP@ss!" }
+```
+→ 200 `{ user: { id, providerId, name, email, role, avatarUrl } }`.
+401 `UNAUTHORIZED` for unknown email or wrong password (generic
+`"Invalid email or password."` to avoid account enumeration), or for
+password-less (Google-only) accounts (`"This account uses Google sign-in..."`).
+NEVER creates a user and NEVER returns the password hash. The frontend mints
+its Bearer JWT only after this endpoint confirms the credentials.
+
 **`POST /auth/token/verify` → 200**
 ```json
 {
@@ -49,6 +73,9 @@ after a Better Auth session is confirmed; the secret never reaches browser JS
 ```
 Users are matched by `providerId`; if absent, a new `User` is created (`role: "user"`,
 name defaults to `"User"` when the token carries no name). Invalid/expired token → 401.
+Note: email/password logins MUST go through `/auth/sign-in` first — `verify`
+upserts by design (Google first-login / Better Auth bridge), so calling it
+directly with a self-minted JWT would bypass credential checks.
 
 **`POST /auth/logout` → 204** — no body. Stateless JWT revocation is client-side;
 the endpoint exists for contract compliance.
@@ -162,11 +189,22 @@ contract had no endpoint.
   "nutrition": { "caloriesPerServing": 420, "proteinGramsPerServing": 40, "carbsGramsPerServing": 12, "fatGramsPerServing": 22 }
 }
 ```
-→ 201 `{ recipe }`. `status` defaults to `draft`.
+→ 201 `{ recipe }`. `status` defaults to `draft`. Re-submitting the same dish
+(same owner + title + ingredients + steps — e.g. double-clicking Save/Publish on
+one generated output, retrying, or replaying the request) → 409 `CONFLICT`
+(`"This recipe has already been saved."`) instead of a second record. The check
+ignores `slug` (the generator mints a fresh timestamped slug per attempt) and
+cosmetic `pantryMatch` tags.
+
+**Additive (post-freeze):** `POST /recipes` accepts optional `"source": "manual" | "ai"`
+(default `"manual"`). The AI generator passes `"source": "ai"` so saved AI recipes
+keep their "AI Generated" badge and AI/allergy disclaimers on the detail page;
+the manual form omits it. `source` is immutable — `PATCH /recipes/:id`
+(`UpdateRecipeInput`) does not accept it.
 
 **Recipe response** adds: `id`, `owner`, `source`, `status`, `totalTimeMinutes`,
 `averageRating`, `ratingCount`, `favoriteCount`, `commentCount`, `publishedAt`,
-`createdAt`, `updatedAt`. PATCH uses `UpdateRecipeInput` (all optional).
+`createdAt`, `updatedAt`. PATCH uses `UpdateRecipeInput` (all optional, never `source`).
 
 ---
 
@@ -176,6 +214,8 @@ contract had no endpoint.
 |--------|------|------|-------------|
 | POST | `/ai/recipes/generate` | required | Generate recipe from pantry + preferences (FR-AI-01..08) |
 | POST | `/ai/flavor-pairings` | required | Complementary ingredients/substitutions (FR-FLAVOR) |
+| POST | `/ai/nutrition/analyze-photo` | required | Analyze food photo for nutrition estimation (FR-PHOTO-01..04) |
+| POST | `/ai/recipes/taste-match` | required | **Additive:** recommend existing recipes matching taste preferences (FR-TASTE-01..03) |
 
 **`POST /ai/recipes/generate` body** (`AIRecipePromptInput`):
 ```json
@@ -213,7 +253,190 @@ contract had no endpoint.
 ```
 → 200 `{ suggestions: [{ ingredient, reason, type: "addition"|"substitution" }] }`
 
-**Failure handling:** timeout ≤30s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable.
+**`POST /ai/nutrition/analyze-photo` body** (`FoodPhotoAnalysisInput`):
+```json
+{
+  "image": "data:image/jpeg;base64,... OR https://...",
+  "mimeType": "image/jpeg",
+  "mealContext": "Homemade dinner plate"
+}
+```
+→ 200 `FoodPhotoAnalysisResult`:
+```json
+{
+  "dishName": "Grilled Lemon Salmon with Roasted Asparagus",
+  "summary": "Visual analysis detects grilled salmon fillet, roasted asparagus spears, and olive oil dressing.",
+  "detectedFoods": [
+    { "name": "Grilled Salmon", "portion": "150g fillet", "confidence": "high", "calories": 280, "proteinGrams": 34, "carbsGrams": 0, "fatGrams": 15, "fiberGrams": 0 }
+  ],
+  "totalNutrition": {
+    "calories": { "min": 320, "max": 400, "estimate": 360 },
+    "proteinGrams": { "min": 32, "max": 38, "estimate": 35 },
+    "carbsGrams": { "min": 4, "max": 8, "estimate": 6 },
+    "fatGrams": { "min": 18, "max": 24, "estimate": 21 }
+  },
+  "macroDistribution": { "proteinPercentage": 39, "carbsPercentage": 7, "fatPercentage": 54 },
+  "dietaryTags": ["high-protein", "gluten-free", "keto"],
+  "allergenWarnings": ["Fish"],
+  "healthInsights": ["Rich in lean protein and heart-healthy Omega-3 fatty acids."],
+  "suggestedIngredientsForRecipe": ["salmon fillet", "asparagus", "olive oil", "lemon"],
+  "disclaimer": "Nutritional values are approximate AI estimations based on visual appearance and should not be used as clinical or medical advice."
+}
+```
+
+**Failure handling:** timeout ≤60s → 504 or 502 `AI_PROVIDER_ERROR`, safeMessage only, retryable. The photo-nutrition route accepts JSON bodies up to 15 MB (≈10 MB decoded image; 10–15 MB originals are client-compressed).
+
+**Additive (post-freeze): `POST /ai/recipes/taste-match`** (required, `aiRateLimiter`) — AI
+Taste Matcher (FR-TASTE-01..03). Recommends existing **published** recipes that best match
+a user's taste preferences, instead of generating a new recipe. The backend pre-filters
+published recipes into a bounded candidate pool (via the existing text index and `tags`
+field — no schema change), then asks the AI to score/rank only within that pool; any
+`recipeId` the model returns outside the offered candidates is discarded server-side.
+
+Body (`TasteMatchInput`):
+```json
+{
+  "tastes": ["spicy", "umami"],
+  "intensity": "strong",
+  "notes": "not too oily, prefer noodle or rice dishes",
+  "limit": 10
+}
+```
+`tastes` (required, 1-6 of `"spicy" | "sweet" | "salty" | "sour" | "bitter" | "umami"`),
+`intensity` (optional, `"mild" | "medium" | "strong"`), `notes` (optional, max 300 chars),
+`limit` (optional, default 10, max 20).
+
+→ 200:
+```json
+{
+  "matches": [
+    {
+      "recipe": { "id": "...", "title": "Spicy Miso Ramen", "...": "full Recipe object, same shape as GET /recipes/:id" },
+      "score": 92,
+      "matchedTastes": ["spicy", "umami"],
+      "reason": "Chili oil and miso broth deliver a strong spicy-umami combination."
+    }
+  ]
+}
+```
+Returns `{ "matches": [] }` (200, not an error) when no published recipes exist yet.
+Same failure handling as the other AI endpoints above.
+
+---
+
+## `/assistant` — Food & Nutrition AI Assistant (INFO.md feature)
+
+RAG assistant grounded in the caller's own data. All endpoints require auth
+(`requireAuth` + shared `aiRateLimiter`, 10 req/15 min, IP-scoped like the rest
+of the API rather than per-user — deliberate reuse of existing infrastructure).
+User identity always comes from `req.user` — no `userId` is accepted from the client.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/assistant/chat` | required | Context-aware chat answer + `contextUsed` |
+| POST | `/assistant/recommendations` | required | Ranked recipe recommendations (real IDs only) |
+| POST | `/assistant/pantry-suggestions` | required | DB-scored pantry matches, AI-ranked |
+| POST | `/assistant/macro-adjustments` | required | Structured macro-change suggestions (never overwrites plans) |
+
+**DB reality (verified against live data):** only `users`, `recipes`, and
+`favorites` are retrieved server-side (scoped to the caller). There is no
+pantry or diet-plan collection — `pantryItems` and `dailyPlan` arrive as
+optional client-supplied request context (same as the generator flow). Chat
+history is an optional client-supplied recent window (max 10 turns); nothing is
+persisted except `AIGenerationLog` telemetry (no new collection).
+
+**`POST /assistant/chat` body** (`AssistantChatInput`):
+```json
+{
+  "message": "What can I cook with the ingredients in my pantry?",
+  "pantryItems": ["chicken breast", { "name": "rice", "quantity": 1, "unit": "kg" }],
+  "dailyPlan": { "calories": 2300, "proteinGrams": 120 },
+  "history": [{ "role": "user", "message": "Hi" }]
+}
+```
+`message` 1–2000 chars (trimmed). → 200 `{ message, contextUsed: ["profile","favorites","pantry","dailyPlan","recipes"] }`.
+
+**`POST /assistant/recommendations` body** (`AssistantRecommendationInput`):
+```json
+{ "goal": "high-protein-dinner", "limit": 5, "pantryItems": ["chicken"], "dailyPlan": { "calories": 2300 } }
+```
+→ 200 `{ recommendations: [{ recipeId, title, reason, matchScore }] }`.
+IDs outside the served candidate/favorite set are discarded server-side (never
+fake); items conflicting with stored allergies are filtered. Empty array (200)
+when nothing fits.
+
+**`POST /assistant/pantry-suggestions` body** (`PantrySuggestionsInput`):
+```json
+{ "pantryItems": ["chicken", "rice", "tomatoes"], "limit": 5 }
+```
+`pantryItems` min 1, max 50. Published recipes are scored locally first
+(`usedCount`/`missingCount` via pantry matching); only top candidates reach the
+LLM for ranking. → 200 `{ suggestions: [{ recipeId, title, reason, matchScore, usedCount, missingCount }] }`.
+`{ suggestions: [] }` (200, no LLM call) when nothing matches.
+
+**`POST /assistant/macro-adjustments` body** (`MacroAdjustmentInput`):
+```json
+{ "request": "I need more protein but want to keep calories similar." }
+```
+Uses `dailyPlan` input or the profile's stored targets as baseline.
+→ 200 `{ recommendation: { calories, proteinGrams, carbohydratesGrams, fatGrams }, changes: [{ meal, change }], reason }`.
+Suggestions only — deterministic plans are never overwritten.
+
+**Failure handling:** 400 `VALIDATION_ERROR` on invalid shape; 401 without a
+token; 429 `RATE_LIMITED` on quota; timeout ≤30s → 504, provider/invalid-output
+→ 502 `AI_PROVIDER_ERROR`, safeMessage only. No new env vars — reuses
+`GROQ_API_KEY` / `GROQ_MODEL` / `AI_REQUEST_TIMEOUT_MS` (server-only).
+
+---
+
+## `/diet` — diet plan & nutrition calculator (INFO.md feature)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/diet/plan` | required | Calculate BMI, BMR, calorie/protein targets + food plan from body metrics |
+
+**`POST /diet/plan` body** (`DietPlanInput`):
+```json
+{
+  "age": 30,
+  "weightKg": 70,
+  "heightCm": 175,
+  "sex": "male",
+  "activityLevel": "moderate",
+  "dietaryPreference": "vegetarian"
+}
+```
+`age` 1–120 (int), `weightKg` 20–300, `heightCm` 50–250 (numeric strings are
+coerced), `sex`: `male | female`, `activityLevel`:
+`sedentary | light | moderate | active | very-active`, `dietaryPreference`:
+optional `DietaryLabel` (best-effort filter on the suggested protein foods:
+`vegan` → plant-only, `vegetarian` → no meat/fish, `dairy-free` → no dairy,
+`keto`/`low-carb` → no legumes; `halal`/`gluten-free`/`high-protein` use the
+default plan since the database contains no pork and every item is
+intrinsically gluten-free and protein-rich — compliance is never guaranteed,
+see the response disclaimer).
+
+→ 200 `DietPlanResult`:
+```json
+{
+  "bmi": 22.9,
+  "bmiCategory": "Normal weight",
+  "bmrCalories": 1649,
+  "dailyCalories": 2556,
+  "protein": { "min": 84, "max": 126, "estimate": 105 },
+  "foodPlan": [
+    { "food": "Chicken breast (skinless)", "portion": "135 g", "proteinGrams": 42, "note": "Cooked weight" },
+    { "food": "Eggs", "portion": "5 large eggs", "proteinGrams": 30, "note": "Boiled or poached" }
+  ],
+  "disclaimer": "These values are estimates for general guidance only and are not medical advice. Food suggestions are filtered on a best-effort basis..."
+}
+```
+Formulas: BMI = kg/m² (WHO cut-offs); BMR = Mifflin-St Jeor (clamped at ≥ 0 —
+extreme inputs can otherwise drive the equation negative); daily calories =
+BMR × activity factor (1.2 / 1.375 / 1.55 / 1.725 / 1.9); protein = weight-based
+g/kg/day band per activity level. The response is re-validated against
+`DietPlanResult` server-side before sending. Pure calculation — nothing is
+stored, no AI provider involved. 400 on invalid shape, 401 without a Bearer token.
 
 ---
 
@@ -284,6 +507,7 @@ the caller's whole favorites list. The `recipe` card projection returned by
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+| GET | `/admin/overview` | admin | **Additive:** platform analytics, KPIs, trends, AI health & activity feeds (`?range=7d\|30d\|90d`) |
 | GET | `/admin/users` | admin | List/search users (`AdminUserSearchQuery`: `page`, `limit`, `q`, `role`) |
 | GET | `/admin/recipes` | admin | List all recipes incl. hidden/draft (`AdminRecipeSearchQuery`: `page`, `limit`, `q`, `status`) |
 | PATCH | `/admin/recipes/:id` | admin | Hide/restore recipe (FR-ADMIN-02) |
@@ -295,6 +519,41 @@ the caller's whole favorites list. The `recipe` card projection returned by
 All admin actions are logged (FR-ADMIN-03, structured `console.info`; no separate
 audit-log model — FR-ADMIN-04 allows protected endpoints without a full
 dashboard for MVP). Non-admin → 403.
+
+**Additive (post-freeze): `GET /admin/overview`** (admin required). Additive endpoint; needs Lead sign-off per contract freeze. Accepts optional `?range=7d|30d|90d` (default `30d`). Invalid range → 400 `VALIDATION_ERROR`.
+
+Response → 200 `AdminOverviewResult`:
+```json
+{
+  "range": "30d",
+  "kpis": {
+    "totalUsers": 150,
+    "userRoles": { "user": 145, "admin": 5 },
+    "totalRecipes": 320,
+    "recipeStatus": { "published": 250, "draft": 50, "hidden": 20 },
+    "recipeSource": { "ai": 210, "manual": 110 },
+    "pendingModeration": { "hiddenRecipes": 20, "moderatedComments": 8, "total": 28 },
+    "totalComments": 412,
+    "totalFavorites": 890,
+    "platformAverageRating": 4.62,
+    "aiMetrics": { "total": 500, "successRate": 96.4, "averageLatencyMs": 1240 }
+  },
+  "trends": {
+    "userGrowth": [ { "date": "2026-03-01", "count": 5 } ],
+    "recipeCreation": [ { "date": "2026-03-01", "count": 12 } ]
+  },
+  "aiHealth": { "success": 482, "failed": 12, "timeout": 6 },
+  "topLists": {
+    "topRecipes": [ { "id": "...", "title": "Garlic Chicken", "averageRating": 4.9, "favoriteCount": 42, "status": "published" } ],
+    "topCreators": [ { "userId": "...", "name": "Chef Ada", "recipeCount": 18 } ]
+  },
+  "feeds": {
+    "latestActivity": [ { "type": "user_registered", "id": "...", "title": "Ada Lovelace", "createdAt": "ISO8601" } ],
+    "recentAiFailures": [ { "id": "...", "model": "llama3-70b-8192", "errorCategory": "timeout", "latencyMs": 30000, "createdAt": "ISO8601" } ]
+  }
+}
+```
+
 
 **`PATCH /admin/recipes/:id` body** (`AdminRecipeModerationInput`):
 ```json
@@ -314,6 +573,100 @@ moderate/unmoderate/delete.
 
 `GET /admin/users` items: `{ id, name, email, avatarUrl, bio, role, createdAt, updatedAt }`.
 All three list endpoints return the standard paginated envelope `{ items, page, limit, total, totalPages }`.
+
+---
+
+## `/pantry` — persistent pantry (Workstream A)
+
+All routes require auth (`requireAuth`). Every query is scoped to `{ _id, userId: req.user.id }` —
+cross-user access (including admins) → 404 `NOT_FOUND`. Malformed `:id` → 400 `VALIDATION_ERROR`
+(`parseIdParam`). Free-text `name`/`notes` are sanitized (`utils/sanitize.ts`) before Zod validation.
+`lowStock` is derived (`threshold != null && quantity <= threshold`), never stored.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/pantry/items` | List own items, paginated envelope (`PantrySearchQuery`: `category`, `q`, `expiringWithinDays`, `lowStock`, `page`, `limit`) |
+| POST | `/pantry/items` | Add item (`CreatePantryItemInput`) |
+| PATCH | `/pantry/items/:id` | Edit item / adjust quantity (`UpdatePantryItemInput`) |
+| DELETE | `/pantry/items/:id` | Remove item → 200 `{ success: true }` |
+| POST | `/pantry/items/:id/use` | Consume quantity (body `UsePantryItemInput { quantity }`) |
+| GET | `/pantry/expiring` | Items with `expiryDate != null`, sorted asc, paginated envelope |
+
+**Item shape:** `{ id, userId, ingredientKey, name, quantity, unit, category, expiryDate, lowStockThreshold, lowStock, notes, createdAt, updatedAt }`.
+`ingredientKey` is normalized server-side (`utils/ingredientKey.ts`); `expiryDate` accepts `YYYY-MM-DD`
+(UTC midnight) and must be today-or-future; `category` is one of
+`vegetables|fruits|meat|dairy|grains|spices|frozen|snacks|other`.
+
+**Duplicate/merge semantics:** exact `ingredientKey + unit` duplicate → 409 `CONFLICT`
+("Update its quantity instead"); convertible-unit near-duplicate (`500g` + `1kg`) → converted and
+summed into the existing line → 200 `{ item }` (no second line); otherwise → 201 `{ item }`.
+
+**Consume semantics:** conditional atomic decrement
+(`findOneAndUpdate({ _id, userId, quantity: { $gte: qty } }, { $inc: -qty })`) — insufficient
+stock → 409 `CONFLICT` with the available amount in the message; quantity can never go negative.
+
+**Filters:** `q` is regex-escaped; `expiringWithinDays=N` matches `expiryDate != null AND <= today+N`
+(null expiries never match); `lowStock=true` matches `threshold != null AND quantity <= threshold`.
+
+---
+
+## `/meal-plans` — smart meal planning (Workstream B)
+
+All routes require auth. Same ownership/param rules as `/pantry` (cross-user incl. admin → 404,
+malformed `:id` → 400). AI routes additionally carry `aiRateLimiter` (10/15 min); deterministic
+CRUD stays on the base limiter. Dates are `YYYY-MM-DD` (UTC midnight); week and meal dates echo as
+`YYYY-MM-DD`. At most one meal per `(date, mealType)` per plan (Zod refinement); swap is addressed
+by subdoc `mealId`, never ambiguous. `isFavorite` is a flag (a plan can be both `active` and favorite).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/meal-plans` | List own plans, paginated (`MealPlanListQuery`: `status`, `isFavorite`, `page`, `limit`); meals hydrated with recipe cards |
+| POST | `/meal-plans` | Manual create (`CreateMealPlanInput`; meals may be `[]`) → 201 `{ plan }` |
+| GET | `/meal-plans/:id` | Detail → 200 `{ plan }` with recipe cards; deleted recipe → `{ recipe: null, missing: true }` |
+| PATCH | `/meal-plans/:id` | Full-array meal replace (move/remove/servings), name/dates/status/favorite edits → 200 `{ plan }` |
+| DELETE | `/meal-plans/:id` | Delete → 200 `{ success: true }` |
+| POST | `/meal-plans/ai-generate` | AI full-plan generation (`AIGenerateMealPlanInput`) → 201 `{ plan }` |
+| POST | `/meal-plans/:id/swap-meal` | Replace exactly one meal (`SwapMealInput { mealId, notes? }`) → 200 `{ plan }` |
+| POST | `/meal-plans/:id/optimize` | Pantry/reuse/nutrition optimization pass (body `{}`) → 200 `{ plan }` |
+
+**Plan shape:** `{ id, userId, name, weekStartDate, weekEndDate, status: active|archived, isFavorite,
+constraints | null, meals: [{ mealId, date, mealType, recipeId, servings 1–20,
+source: manual|ai|swap|optimized, notes, recipe: card | null, missing }], createdAt, updatedAt }`.
+`recipeId`s must reference existing **published** recipes (missing/unpublished → 404); out-of-range
+dates, duplicate slots, or `weekEndDate <= weekStartDate` → 400. AI output is Zod-validated
+server-side; hallucinated `recipeId`s outside the candidate pool are discarded; provider
+failure/invalid output → 502/504 `AI_PROVIDER_ERROR` with nothing stored. Move/remove/servings
+changes are pure DB writes (zero AI calls).
+
+---
+
+## `/grocery-lists` — smart grocery system (Workstream C)
+
+All routes require auth. Same ownership/param rules as above. All math (consolidate → subtract
+pantry) is deterministic application code (`services/groceryService.ts` + Dev-A `utils/units.ts`) —
+never the LLM. Pantry stock is read via Dev-A `pantryService.listPantryForUser` (B/C never import
+the `PantryItem` model). `budget` is display-only in v1; no `estimatedCost` is stored without real
+price data. Imperial/unknown units (`oz`, `lb`, …) are display-only and never auto-merged.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/grocery-lists` | List own lists, paginated (`page`, `limit`, `status`) |
+| GET | `/grocery-lists/:id` | Detail (list document with `items[]`) |
+| POST | `/grocery-lists/generate` | Generate from `GenerateGroceryInput { mealPlanId }` → 201 list document |
+| PATCH | `/grocery-lists/:id` | `UpdateGroceryListInput { name?, budget?, status? }` → 200 list |
+| POST | `/grocery-lists/:id/items` | Add manual item (`AddGroceryItemInput`, stored `isManual: true`) → 200 list |
+| PATCH | `/grocery-lists/:id/items/:itemId` | `UpdateGroceryItemInput { quantity?, unit?, category?, isPurchased? }` → 200 list |
+| DELETE | `/grocery-lists/:id/items/:itemId` | Remove item → 200 list |
+| POST | `/grocery-lists/:id/clear-purchased` | Remove all purchased items (body `{}`) → 200 list |
+| POST | `/grocery-lists/:id/recalculate` | Re-run consolidate+subtract (body `{}`) → 200 list; preserves manual items + `isPurchased`/`movedToPantry` flags matched by `ingredientKey`+canonical unit |
+| POST | `/grocery-lists/:id/purchased-to-pantry` | `PurchasedToPantryInput { itemIds }` → 200 `{ results, list }`; upserts via Dev-A `upsertPantryFromGrocery`, idempotent (double-POST is a no-op via `movedToPantry`) |
+
+**Item shape:** `{ _id, ingredientKey, name, quantity, unit, category, sourceRecipeIds[],
+isPurchased, isManual, estimated, movedToPantry }`. Generation scales recipe quantities by
+`meal.servings / recipe.servings`, consolidates by `ingredientKey`+base unit (incompatible units
+stay separate lines; missing quantities become `1 pcs` + `estimated: true`), then subtracts pantry
+(`toBuy = max(0, required − pantry)` per convertible unit; fully-covered items excluded from the
+list but reported as covered).
 
 ---
 

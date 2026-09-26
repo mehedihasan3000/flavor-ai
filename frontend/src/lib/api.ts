@@ -1,35 +1,68 @@
 import type {
   AdminComment,
   AdminCommentSearchQuery,
+  AdminOverviewData,
+  AdminOverviewRange,
   AdminRecipe,
   AdminRecipeSearchQuery,
   AdminUser,
   AdminUserSearchQuery,
   AIRecipeOutput,
   AIRecipePromptInput,
+  AssistantChatInput,
+  AssistantChatResult,
+  AssistantRecommendationInput,
+  AssistantRecommendationResult,
   Comment,
   CommentStatus,
   CreateCommentInput,
   CreateRatingInput,
   CreateRecipeInput,
   DashboardStats,
+  DietPlanInput,
+  DietPlanResult,
   ErrorCode,
   ErrorEnvelope,
   FavoriteItem,
   FavoriteStatus,
   FlavorPairingInput,
   FlavorPairingSuggestion,
+  FoodPhotoAnalysisInput,
+  FoodPhotoAnalysisResult,
+  MacroAdjustmentInput,
+  MacroAdjustmentResult,
+  AIGenerateMealPlanInput,
+  CreateMealPlanInput,
+  MealPlan,
+  MealPlanListQuery,
+  SwapMealInput,
+  UpdateMealPlanInput,
   PaginatedResult,
   PaginationQuery,
+  PantryItem,
+  CreatePantryItemInput,
+  UpdatePantryItemInput,
+  UsePantryItemInput,
+  PantrySearchQuery,
   PantryMatchResult,
+  PantrySuggestionsInput,
+  PantrySuggestionsResult,
   Rating,
   RatingSummary,
   Recipe,
   RecipeSearchQuery,
+  TasteMatchInput,
+  TasteMatchResult,
   UpdateCommentInput,
   UpdateProfileInput,
   UpdateRecipeInput,
   UserProfile,
+  GroceryList,
+  GenerateGroceryInput,
+  AddGroceryItemInput,
+  UpdateGroceryItemInput,
+  UpdateGroceryListInput,
+  GroceryListSearchQuery,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:4000/api/v1";
@@ -228,9 +261,10 @@ export function listRecipes(
 export async function generateAIRecipe(
   input: AIRecipePromptInput,
   options: RequestOptions = {},
-): Promise<AIRecipeOutput> {
-  // Backend wraps the output: { recipe, pantryMatch } — unwrap for callers
-  const res = await request<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }>(
+): Promise<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }> {
+  // Backend returns { recipe, pantryMatch } — return both so the generator can
+  // render the pantry summary (used/missing counts) alongside the recipe.
+  return request<{ recipe: AIRecipeOutput; pantryMatch: PantryMatchResult }>(
     "/ai/recipes/generate",
     {
       ...options,
@@ -238,7 +272,6 @@ export async function generateAIRecipe(
       body: input,
     },
   );
-  return res.recipe;
 }
 
 export async function suggestFlavorPairings(
@@ -252,6 +285,87 @@ export async function suggestFlavorPairings(
     body: input,
   });
   return { pairings: res.suggestions ?? [] };
+}
+
+export async function matchRecipesToTaste(
+  input: TasteMatchInput,
+  options: RequestOptions = {},
+): Promise<{ matches: TasteMatchResult[] }> {
+  return request<{ matches: TasteMatchResult[] }>("/ai/recipes/taste-match", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function analyzeFoodPhoto(
+  input: FoodPhotoAnalysisInput,
+  options: RequestOptions = {},
+): Promise<FoodPhotoAnalysisResult> {
+  return request<FoodPhotoAnalysisResult>("/ai/nutrition/analyze-photo", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+// ─── Food & Nutrition AI Assistant (INFO.md feature) ─────────────────────────
+
+export async function chatWithAssistant(
+  input: AssistantChatInput,
+  options: RequestOptions = {},
+): Promise<AssistantChatResult> {
+  return request<AssistantChatResult>("/assistant/chat", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getAssistantRecommendations(
+  input: AssistantRecommendationInput = {},
+  options: RequestOptions = {},
+): Promise<AssistantRecommendationResult> {
+  return request<AssistantRecommendationResult>("/assistant/recommendations", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getPantrySuggestions(
+  input: PantrySuggestionsInput,
+  options: RequestOptions = {},
+): Promise<PantrySuggestionsResult> {
+  return request<PantrySuggestionsResult>("/assistant/pantry-suggestions", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getMacroAdjustments(
+  input: MacroAdjustmentInput,
+  options: RequestOptions = {},
+): Promise<MacroAdjustmentResult> {
+  return request<MacroAdjustmentResult>("/assistant/macro-adjustments", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+// ─── Diet Plan (INFO.md feature) ─────────────────────────────────────────────
+
+export async function getDietPlan(
+  input: DietPlanInput,
+  options: RequestOptions = {},
+): Promise<DietPlanResult> {
+  return request<DietPlanResult>("/diet/plan", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
 }
 
 export async function getRecipe(
@@ -524,3 +638,280 @@ export function adminDeleteComment(
   return request<{ success: true }>(`/admin/comments/${id}`, { ...options, method: "DELETE" });
 }
 
+export function adminGetOverview(
+  range: AdminOverviewRange = "30d",
+  options: RequestOptions = {},
+): Promise<AdminOverviewData> {
+  return request<AdminOverviewData>(`/admin/overview?range=${range}`, options);
+}
+
+
+// ─── Pantry (Dev A) — FEATURES_TASKS.md §2 — Dev A appends below ─────────────
+
+export function listPantryItems(
+  query: PantrySearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<PantryItem>> {
+  return request<PaginatedResult<PantryItem>>(`/pantry/items${toQueryString(query)}`, options);
+}
+
+export function listExpiringPantry(
+  query: PaginationQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<PantryItem>> {
+  return request<PaginatedResult<PantryItem>>(`/pantry/expiring${toQueryString(query)}`, options);
+}
+
+export async function createPantryItem(
+  input: CreatePantryItemInput,
+  options: RequestOptions = {},
+): Promise<PantryItem> {
+  const res = await request<{ item: PantryItem }>("/pantry/items", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.item;
+}
+
+export async function updatePantryItem(
+  id: string,
+  input: UpdatePantryItemInput,
+  options: RequestOptions = {},
+): Promise<PantryItem> {
+  const res = await request<{ item: PantryItem }>(`/pantry/items/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+  return res.item;
+}
+
+export function deletePantryItem(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/pantry/items/${id}`, {
+    ...options,
+    method: "DELETE",
+  });
+}
+
+export async function usePantryItem(
+  id: string,
+  input: UsePantryItemInput,
+  options: RequestOptions = {},
+): Promise<PantryItem> {
+  const res = await request<{ item: PantryItem }>(`/pantry/items/${id}/use`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.item;
+}
+
+// ─── MealPlan (Dev B) — FEATURES_TASKS.md §3 — Dev B appends below ────────────
+
+export function listMealPlans(
+  query: MealPlanListQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<MealPlan>> {
+  return request<PaginatedResult<MealPlan>>(`/meal-plans${toQueryString(query)}`, options);
+}
+
+export async function createMealPlan(
+  input: CreateMealPlanInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>("/meal-plans", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.plan;
+}
+
+export async function getMealPlan(
+  id: string,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}`, options);
+  return res.plan;
+}
+
+export async function updateMealPlan(
+  id: string,
+  input: UpdateMealPlanInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+  return res.plan;
+}
+
+export function deleteMealPlan(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ success: true }> {
+  return request<{ success: true }>(`/meal-plans/${id}`, { ...options, method: "DELETE" });
+}
+
+export async function aiGenerateMealPlan(
+  input: AIGenerateMealPlanInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>("/meal-plans/ai-generate", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.plan;
+}
+
+export async function swapMeal(
+  id: string,
+  input: SwapMealInput,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}/swap-meal`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+  return res.plan;
+}
+
+export async function optimizeMealPlan(
+  id: string,
+  options: RequestOptions = {},
+): Promise<MealPlan> {
+  const res = await request<{ plan: MealPlan }>(`/meal-plans/${id}/optimize`, {
+    ...options,
+    method: "POST",
+    body: {},
+  });
+  return res.plan;
+}
+
+// ─── Grocery (Dev C) — FEATURES_TASKS.md §4 — Dev C appends below ─────────────
+
+export function listGroceryLists(
+  query: GroceryListSearchQuery = {},
+  options: RequestOptions = {},
+): Promise<PaginatedResult<GroceryList>> {
+  return request<PaginatedResult<GroceryList>>(`/grocery-lists${toQueryString(query)}`, options);
+}
+
+export function getGroceryList(
+  id: string,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}`, options);
+}
+
+export function generateGroceryList(
+  input: GenerateGroceryInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>("/grocery-lists/generate", {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export function recalculateGroceryList(
+  id: string,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/recalculate`, {
+    ...options,
+    method: "POST",
+    body: {},
+  });
+}
+
+export function updateGroceryList(
+  id: string,
+  input: UpdateGroceryListInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function addGroceryItem(
+  id: string,
+  input: AddGroceryItemInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/items`, {
+    ...options,
+    method: "POST",
+    body: input,
+  });
+}
+
+export function updateGroceryItem(
+  id: string,
+  itemId: string,
+  input: UpdateGroceryItemInput,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/items/${itemId}`, {
+    ...options,
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function markPurchased(
+  id: string,
+  itemId: string,
+  isPurchased: boolean,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return updateGroceryItem(id, itemId, { isPurchased }, options);
+}
+
+export function deleteGroceryItem(
+  id: string,
+  itemId: string,
+  options: RequestOptions = {},
+): Promise<{ message: string }> {
+  return request<{ message: string }>(`/grocery-lists/${id}/items/${itemId}`, {
+    ...options,
+    method: "DELETE",
+  });
+}
+
+export function clearPurchased(
+  id: string,
+  options: RequestOptions = {},
+): Promise<GroceryList> {
+  return request<GroceryList>(`/grocery-lists/${id}/clear-purchased`, {
+    ...options,
+    method: "POST",
+  });
+}
+
+export function purchasedToPantry(
+  id: string,
+  itemIds: string[],
+  options: RequestOptions = {},
+): Promise<{ results: Array<{ groceryItemId: string; status: string }>; list: GroceryList }> {
+  return request<{ results: Array<{ groceryItemId: string; status: string }>; list: GroceryList }>(
+    `/grocery-lists/${id}/purchased-to-pantry`,
+    {
+      ...options,
+      method: "POST",
+      body: { itemIds },
+    },
+  );
+}

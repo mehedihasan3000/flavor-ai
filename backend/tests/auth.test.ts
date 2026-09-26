@@ -56,6 +56,7 @@ describe("verifyAccessToken", () => {
       email: "ada@example.com",
       name: "Ada",
       role: "user",
+      avatarUrl: null,
     });
   });
 

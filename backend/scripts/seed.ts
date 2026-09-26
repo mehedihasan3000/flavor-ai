@@ -18,6 +18,7 @@ import { FavoriteModel } from "../src/models/Favorite.js";
 import { RatingModel } from "../src/models/Rating.js";
 import { RecipeModel } from "../src/models/Recipe.js";
 import { UserModel } from "../src/models/User.js";
+import { hashPassword } from "../src/utils/password.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,12 +38,21 @@ async function upsertUser(data: {
   providerId: string;
   role: "user" | "admin";
   bio: string;
+  passwordPlain: string;
 }) {
-  return UserModel.findOneAndUpdate(
+  const { passwordPlain, ...base } = data;
+  const passwordHash = await hashPassword(passwordPlain);
+  const user = await UserModel.findOneAndUpdate(
     { email: data.email },
-    { $setOnInsert: data },
+    { $setOnInsert: { ...base, passwordHash } },
     { upsert: true, new: true },
   );
+  // Upgrade path: existing docs created before password auth have no hash.
+  if (!user.passwordHash) {
+    user.passwordHash = passwordHash;
+    await user.save();
+  }
+  return user;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +184,8 @@ async function seed() {
   console.log("✅ Connected\n");
 
   // --- Users ---
+  // .com accounts match the Demo User / Demo Admin quick-sign-in buttons
+  // (sign-in page). .demo accounts are kept for backward compatibility.
   console.log("👤 Seeding users...");
   const adminUser = await upsertUser({
     email: "admin@flavorai.demo",
@@ -181,6 +193,7 @@ async function seed() {
     providerId: "demo-admin-001",
     role: "admin",
     bio: "Platform administrator. Curates quality recipes and moderates content.",
+    passwordPlain: "admin123456",
   });
 
   const regularUser = await upsertUser({
@@ -189,10 +202,31 @@ async function seed() {
     providerId: "demo-user-001",
     role: "user",
     bio: "Home cook passionate about Mediterranean and Middle Eastern flavors.",
+    passwordPlain: "password123",
+  });
+
+  const demoAdminCom = await upsertUser({
+    email: "admin@flavorai.com",
+    name: "FlavorAI Admin",
+    providerId: `usr_${Buffer.from("admin@flavorai.com").toString("hex").slice(0, 24)}`,
+    role: "admin",
+    bio: "Platform administrator. Curates quality recipes and moderates content.",
+    passwordPlain: "admin123456",
+  });
+
+  const demoUserCom = await upsertUser({
+    email: "chef@flavorai.com",
+    name: "Chef Alex",
+    providerId: `usr_${Buffer.from("chef@flavorai.com").toString("hex").slice(0, 24)}`,
+    role: "user",
+    bio: "Home cook passionate about Mediterranean and Middle Eastern flavors.",
+    passwordPlain: "password123",
   });
 
   console.log(`  ✓ admin@flavorai.demo (id: ${adminUser._id})`);
-  console.log(`  ✓ chef@flavorai.demo (id: ${regularUser._id})\n`);
+  console.log(`  ✓ chef@flavorai.demo (id: ${regularUser._id})`);
+  console.log(`  ✓ admin@flavorai.com (id: ${demoAdminCom._id})`);
+  console.log(`  ✓ chef@flavorai.com (id: ${demoUserCom._id})\n`);
 
   // --- Recipes ---
   console.log("🍽️  Seeding recipes...");
@@ -292,14 +326,10 @@ async function seed() {
   console.log(`  ✓ Seeded ${createdRecipes.length} favorites`);
 
   console.log("\n🎉 Seed complete!\n");
-  console.log("Demo accounts (use your JWT-minting flow to sign in):");
-  console.log("  Admin  → providerId: demo-admin-001  email: admin@flavorai.demo");
-  console.log("  User   → providerId: demo-user-001   email: chef@flavorai.demo");
-  console.log(
-    "\nNote: These demo accounts have no password hash — they are signed in\n" +
-      "  via the /auth/token/verify endpoint with a JWT minted by the\n" +
-      "  frontend's /api/auth/sign-in route using a demo-account button.\n",
-  );
+  console.log("Demo accounts (sign in with email + password):");
+  console.log("  Admin  → email: admin@flavorai.com  password: admin123456");
+  console.log("  User   → email: chef@flavorai.com   password: password123");
+  console.log("  (Legacy .demo addresses work with the same passwords.)");
 
   await mongoose.disconnect();
   console.log("🔌 Disconnected from MongoDB");

@@ -4,20 +4,22 @@ import { Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/auth";
 import { LoadingState } from "@/components/ui";
+import { AdminOverviewPanel } from "@/components/admin/admin-overview-panel";
 import { AdminUsersPanel } from "@/components/admin/admin-users-panel";
 import { AdminRecipesPanel } from "@/components/admin/admin-recipes-panel";
 import { AdminCommentsPanel } from "@/components/admin/admin-comments-panel";
 
-type AdminTab = "recipes" | "comments" | "users";
+type AdminTab = "overview" | "recipes" | "comments" | "users";
 
 const TABS: ReadonlyArray<{ value: AdminTab; label: string }> = [
+  { value: "overview", label: "Overview" },
   { value: "recipes", label: "Recipes" },
   { value: "comments", label: "Comments" },
   { value: "users", label: "Users" },
 ];
 
 function isAdminTab(value: string): value is AdminTab {
-  return value === "recipes" || value === "comments" || value === "users";
+  return value === "overview" || value === "recipes" || value === "comments" || value === "users";
 }
 
 function AdminContent() {
@@ -25,12 +27,12 @@ function AdminContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const tabParam = searchParams.get("tab") ?? "recipes";
-  const tab = isAdminTab(tabParam) ? tabParam : "recipes";
+  const tabParam = searchParams.get("tab") ?? "overview";
+  const tab = isAdminTab(tabParam) ? tabParam : "overview";
 
   const goToTab = (nextTab: AdminTab) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (nextTab === "recipes") params.delete("tab");
+    if (nextTab === "overview") params.delete("tab");
     else params.set("tab", nextTab);
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
@@ -43,7 +45,7 @@ function AdminContent() {
           Admin moderation
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Hide or restore recipes, moderate comments, and review registered users (FR-ADMIN-01..04).
+          Platform health analytics, recipe moderation, comment management, and user accounts.
         </p>
       </div>
 
@@ -70,12 +72,14 @@ function AdminContent() {
         ))}
       </div>
 
+      {tab === "overview" && <AdminOverviewPanel />}
       {tab === "recipes" && <AdminRecipesPanel />}
       {tab === "comments" && <AdminCommentsPanel />}
       {tab === "users" && <AdminUsersPanel />}
     </main>
   );
 }
+
 
 export default function AdminPage() {
   return (

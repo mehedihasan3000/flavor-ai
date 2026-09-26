@@ -57,8 +57,8 @@ export function AdminUsersPanel() {
 
   return (
     <div>
-      <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-col gap-3 sm:flex-row">
-        <div className="flex-1">
+      <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1">
           <Input
             type="search"
             value={qInput}
@@ -67,20 +67,23 @@ export function AdminUsersPanel() {
             aria-label="Search users"
           />
         </div>
-        <Select
-          aria-label="Filter by role"
-          value={role}
-          onChange={(event) => {
-            setRole(event.target.value as UserRole | "");
-            setPage(1);
-          }}
-          className="sm:w-40"
-        >
-          <option value="">All roles</option>
-          <option value="user">User</option>
-          <option value="admin">Admin</option>
-        </Select>
-        <Button type="submit">Search</Button>
+        <div className="w-full sm:w-48 sm:shrink-0">
+          <Select
+            aria-label="Filter by role"
+            value={role}
+            onChange={(event) => {
+              setRole(event.target.value as UserRole | "");
+              setPage(1);
+            }}
+          >
+            <option value="">All roles</option>
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </Select>
+        </div>
+        <Button type="submit" className="w-full shrink-0 sm:w-auto">
+          Search
+        </Button>
       </form>
 
       {isLoading ? (

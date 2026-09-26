@@ -37,6 +37,7 @@ import {
   ErrorState,
   LoadingState,
 } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
 import { AuthPrompt } from "@/components/auth";
 import { NutritionBadge } from "@/components/recipes/nutrition-badge";
 import { RatingStars } from "@/components/recipes/rating-stars";
@@ -50,6 +51,7 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const { id } = use(params);
   const router = useRouter();
   const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const toast = useToast();
 
   // Recipe load state
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -139,19 +141,38 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
     [id, token, isAuthenticated],
   );
 
+  // Null-safe status for gating community features (ratings/favorites/
+  // comments APIs are published-only). The strict `isPublished` const below
+  // is defined after the loading early-returns instead.
+  const recipeStatus = recipe?.status ?? null;
+
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !recipeStatus) return;
+    if (recipeStatus !== "published") {
+      // Ratings/favorites/comments APIs are published-only by design
+      // (requirePublishedRecipe): reset instead of surfacing a misleading
+      // "Recipe not found" on draft/hidden recipes.
+      Promise.resolve().then(() => {
+        setRatingSummary(null);
+        setRatingError(null);
+        setRatingLoading(false);
+        setFavorited(false);
+      });
+      return;
+    }
     const controller = new AbortController();
     void loadCommunityState(controller.signal);
     return () => controller.abort();
-  }, [loadCommunityState, authLoading]);
+  }, [loadCommunityState, authLoading, recipeStatus]);
 
   const handleRate = (value: RatingValue) => {
     setRatingLoading(true);
     setRatingError(null);
     rateRecipe(id, { value }, { token })
       .then(({ summary }) => {
-        setRatingSummary(summary);
+        // PUT /ratings returns { averageRating, ratingCount } without myRating —
+        // keep the just-submitted value so the picker reflects "Your rating".
+        setRatingSummary({ ...summary, myRating: value });
         setRecipe((prev) =>
           prev ? { ...prev, averageRating: summary.averageRating, ratingCount: summary.ratingCount } : prev,
         );
@@ -237,17 +258,18 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
           ? await unpublishRecipe(recipe.id, { token })
           : await publishRecipe(recipe.id, { token });
       setRecipe(updated);
-      setActionSuccess(
+      const successMsg =
         updated.status === "published"
           ? "Recipe is now published!"
-          : "Recipe has been unpublished and moved to drafts.",
-      );
+          : "Recipe has been unpublished and moved to drafts.";
+      setActionSuccess(successMsg);
+      toast.success(successMsg, {
+        title: updated.status === "published" ? "Published" : "Unpublished",
+      });
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message);
-      } else {
-        setActionError("Action failed. Please try again.");
-      }
+      const msg = err instanceof ApiError ? err.message : "Action failed. Please try again.";
+      setActionError(msg);
+      toast.error(msg, { title: "Update failed" });
     } finally {
       setActionLoading(false);
     }
@@ -260,13 +282,12 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
 
     try {
       await deleteRecipe(recipe.id, { token });
-      router.push("/");
+      toast.success(`"${recipe.title}" was deleted.`, { title: "Recipe deleted" });
+      router.push("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message);
-      } else {
-        setActionError("Failed to delete recipe.");
-      }
+      const msg = err instanceof ApiError ? err.message : "Failed to delete recipe.";
+      setActionError(msg);
+      toast.error(msg, { title: "Delete failed" });
       setShowDeleteModal(false);
       setActionLoading(false);
     }
@@ -303,6 +324,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
   const defaultServings = recipe.servings || 1;
   const scalingRatio = servingsScale / defaultServings;
   const isOwner = Boolean(user && recipe.owner === user.id);
+  const isAdmin = user?.role === "admin";
+  const isOwnerOrAdmin = isOwner || isAdmin;
   const myRating = ratingSummary?.myRating ?? null;
 
   return (
@@ -313,8 +336,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
           Home
         </Link>
         <span>/</span>
-        <Link href="/generator" className="hover:text-neutral-900 transition">
-          Generator
+        <Link href="/recipes" className="hover:text-neutral-900 transition">
+          Recipes
         </Link>
         <span>/</span>
         <span className="font-medium text-neutral-900 truncate max-w-[200px]">
@@ -322,8 +345,8 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
         </span>
       </nav>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
+      {/* Delete Confirmation Modal — only reachable when owner/admin toolbar is visible */}
+      {showDeleteModal && isOwnerOrAdmin && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
@@ -425,26 +448,38 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
                 variant={favorited ? "primary" : "outline"}
                 size="sm"
                 loading={favoriteLoading}
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || !isPublished}
                 onClick={handleToggleFavorite}
-                title={isAuthenticated ? undefined : "Sign in to favorite this recipe"}
+                title={
+                  !isAuthenticated
+                    ? "Sign in to favorite this recipe"
+                    : recipe.status === "draft"
+                      ? "Publish this recipe to enable favorites"
+                      : recipe.status === "hidden"
+                        ? "Favorites are unavailable while this recipe is hidden"
+                        : undefined
+                }
               >
                 <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>
                   {favorited ? "Favorited" : "Favorite"} ({recipe.favoriteCount})
                 </span>
               </Button>
-              <a
-                href="#comments-heading"
-                className="text-neutral-600 underline-offset-2 hover:text-orange-700 hover:underline"
-              >
-                {commentCount ?? recipe.commentCount} comments
-              </a>
+              {isPublished ? (
+                <a
+                  href="#comments-heading"
+                  className="text-neutral-600 underline-offset-2 hover:text-orange-700 hover:underline"
+                >
+                  {commentCount ?? recipe.commentCount} comments
+                </a>
+              ) : (
+                <span className="text-neutral-500">{recipe.commentCount} comments</span>
+              )}
             </div>
           </div>
 
-          {/* Rate this recipe */}
-          {!isOwner && (
+          {/* Rate this recipe — ratings are published-only on the API */}
+          {!isOwner && isPublished && (
             <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               {isAuthenticated ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -478,6 +513,15 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
               {ratingError && (
                 <p className="mt-2 text-xs font-medium text-red-600">{ratingError}</p>
               )}
+            </div>
+          )}
+          {!isOwner && !isPublished && (
+            <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <p className="text-xs text-neutral-600">
+                {recipe.status === "draft"
+                  ? "Ratings open up once this recipe is published."
+                  : "Ratings are unavailable while this recipe is hidden."}
+              </p>
             </div>
           )}
 
@@ -535,45 +579,47 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
             </div>
           )}
 
-          {/* Owner Action Toolbar */}
+          {/* Owner/Admin Action Toolbar — visible only to recipe owner or admin (FR-RECIPE-06) */}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-6">
             <div className="text-xs text-neutral-500">
               Created {new Date(recipe.createdAt).toLocaleDateString()}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href={`/recipes/${recipe.id}/edit`}>
-                <Button type="button" variant="outline" size="sm">
-                  <Pencil className="h-3.5 w-3.5" />
-                  <span>Edit Recipe</span>
+            {isOwnerOrAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/recipes/${recipe.id}/edit`}>
+                  <Button type="button" variant="outline" size="sm">
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>Edit Recipe</span>
+                  </Button>
+                </Link>
+
+                <Button
+                  type="button"
+                  variant={isPublished ? "secondary" : "primary"}
+                  size="sm"
+                  onClick={handleTogglePublish}
+                  disabled={actionLoading}
+                >
+                  {actionLoading
+                    ? "Updating..."
+                    : isPublished
+                    ? "Unpublish"
+                    : "Publish Recipe"}
                 </Button>
-              </Link>
 
-              <Button
-                type="button"
-                variant={isPublished ? "secondary" : "primary"}
-                size="sm"
-                onClick={handleTogglePublish}
-                disabled={actionLoading}
-              >
-                {actionLoading
-                  ? "Updating..."
-                  : isPublished
-                  ? "Unpublish"
-                  : "Publish Recipe"}
-              </Button>
-
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={() => setShowDeleteModal(true)}
-                disabled={actionLoading}
-              >
-                <TrashBin className="h-3.5 w-3.5" />
-                <span>Delete</span>
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setShowDeleteModal(true)}
+                  disabled={actionLoading}
+                >
+                  <TrashBin className="h-3.5 w-3.5" />
+                  <span>Delete</span>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </Card>
@@ -794,10 +840,22 @@ export default function RecipeDetailPage({ params }: RecipeDetailPageProps) {
         </div>
       </div>
 
-      {/* Comments (FR-COMMENT-01..05) */}
-      <Card className="mt-8 p-6">
-        <CommentSection recipeId={recipe.id} onCountChange={setCommentCount} />
-      </Card>
+      {/* Comments (FR-COMMENT-01..05) — the comments API is published-only,
+          so draft/hidden recipes show an explanatory note instead of a 404. */}
+      {isPublished ? (
+        <Card className="mt-8 p-6">
+          <CommentSection recipeId={recipe.id} onCountChange={setCommentCount} />
+        </Card>
+      ) : (
+        <Card className="mt-8 p-6">
+          <h2 className="text-lg font-bold text-heading">Comments</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {recipe.status === "draft"
+              ? "This recipe is still a draft. Publish it to start the conversation."
+              : "This recipe is currently hidden, so comments are unavailable."}
+          </p>
+        </Card>
+      )}
     </main>
   );
 }

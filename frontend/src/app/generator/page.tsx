@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowRotateLeft,
   Check,
@@ -17,6 +18,7 @@ import {
   getMyProfile,
   publishRecipe,
   suggestFlavorPairings,
+  unpublishRecipe,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type {
@@ -26,6 +28,7 @@ import type {
   Difficulty,
   FlavorPairingSuggestion,
   MealType,
+  PantryMatchResult,
   RecipeCategory,
   RecipeIngredient,
 } from "@/lib/types";
@@ -40,6 +43,7 @@ import {
   Select,
   TagInput,
 } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
 import { NutritionBadge } from "@/components/recipes/nutrition-badge";
 
 const DIETARY_OPTIONS: ReadonlyArray<{ value: DietaryLabel; label: string }> = [
@@ -76,11 +80,47 @@ const GENERATION_PROGRESS_MESSAGES = [
   "Calculating nutrition estimates...",
 ];
 
-export default function GeneratorPage() {
-  const { token } = useAuth();
+/** Max ingredients accepted from a `?ingredients=` prefill link. */
+export const MAX_PREFILLED_INGREDIENTS = 20;
 
-  // Form State
-  const [ingredients, setIngredients] = useState<string[]>([]);
+/**
+ * Parses the `?ingredients=a, b, c` query param from the photo-nutrition
+ * "Generate Recipe" CTA into clean, deduped ingredient names. Pure + exported
+ * for unit tests.
+ */
+export function parsePrefilledIngredients(param: string | null): string[] {
+  if (!param) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of param.split(",")) {
+    const candidate = raw.trim().slice(0, 100);
+    if (!candidate) continue;
+    const key = candidate.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(candidate);
+    if (out.length >= MAX_PREFILLED_INGREDIENTS) break;
+  }
+  return out;
+}
+
+function GeneratorContent() {
+  const { token } = useAuth();
+  const searchParams = useSearchParams();
+  const toast = useToast();
+
+  // Prefill from the photo-nutrition CTA (`/generator?ingredients=a, b`).
+  // useState initializers (render-time) keep this React-Compiler safe —
+  // no setState inside effects.
+  const [ingredients, setIngredients] = useState<string[]>(() =>
+    parsePrefilledIngredients(searchParams.get("ingredients")),
+  );
+  const [prefillNotice, setPrefillNotice] = useState<string | null>(() => {
+    const count = parsePrefilledIngredients(searchParams.get("ingredients")).length;
+    return count > 0
+      ? `Prefilled ${count} ingredient${count === 1 ? "" : "s"} from your photo analysis — review below and hit Generate.`
+      : null;
+  });
   const [dietaryLabels, setDietaryLabels] = useState<DietaryLabel[]>([]);
   const [mealType, setMealType] = useState<MealType | "">("");
   const [maxTime, setMaxTime] = useState<string>("");
@@ -95,7 +135,7 @@ export default function GeneratorPage() {
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [recipe, setRecipe] = useState<AIRecipeOutput | null>(null);
-
+  const [pantryMatch, setPantryMatch] = useState<PantryMatchResult | null>(null);
   // Profile Auto-fill state
   const [hasProfile, setHasProfile] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -107,8 +147,21 @@ export default function GeneratorPage() {
 
   // Save/Publish state
   const [isSaving, setIsSaving] = useState(false);
+  // Which action is currently in flight — drives per-button busy labels so the
+  // idle button never shows the other action's text.
+  const [savingMode, setSavingMode] = useState<"draft" | "published" | null>(null);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [createdRecipeId, setCreatedRecipeId] = useState<string | null>(null);
+  const [savedMode, setSavedMode] = useState<"draft" | "published" | null>(null);
+  // Synchronous in-flight guard: React state updates are async, so rapid
+  // double-clicks could invoke handleSaveRecipe twice before `isSaving`
+  // re-renders and disables the buttons. The ref closes that gap.
+  const saveInFlight = useRef(false);
+  // Per-action locks: an action that already succeeded for the current output
+  // stays disabled, while the cross-action (draft <-> published on the same
+  // record) remains available. Regenerate resets both and starts a new cycle.
+  const isDraftSaved = savedMode === "draft";
+  const isPublished = savedMode === "published";
 
   // Fetch profile on mount to pre-fill dietary preferences (requires a session token)
   useEffect(() => {
@@ -171,9 +224,12 @@ export default function GeneratorPage() {
     setValidationError(null);
     setError(null);
     setSaveSuccessMessage(null);
+    setCreatedRecipeId(null);
+    setSavedMode(null);
     setProgressStep(0);
     setIsGenerating(true);
     setRecipe(null);
+    setPantryMatch(null);
     setPairings(null);
 
     const promptInput: AIRecipePromptInput = {
@@ -191,7 +247,8 @@ export default function GeneratorPage() {
 
     try {
       const generated = await generateAIRecipe(promptInput, { token });
-      setRecipe(generated);
+      setRecipe(generated.recipe);
+      setPantryMatch(generated.pantryMatch);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -222,12 +279,36 @@ export default function GeneratorPage() {
   };
 
   const handleSaveRecipe = async (publishImmediately: boolean) => {
-    if (!recipe) return;
+    if (!recipe || saveInFlight.current) return;
+    // Per-action idempotency: a completed action cannot run twice for the
+    // current output — only the cross-action on the same record may follow.
+    if (!publishImmediately && savedMode === "draft") return;
+    if (publishImmediately && savedMode === "published") return;
+    saveInFlight.current = true;
     setIsSaving(true);
+    setSavingMode(publishImmediately ? "published" : "draft");
     setError(null);
     setSaveSuccessMessage(null);
 
     try {
+      // Cross-action on the already-created record — never mints a new one.
+      if (createdRecipeId) {
+        if (publishImmediately) {
+          await publishRecipe(createdRecipeId, { token });
+          const successMsg = `"${recipe.title}" published successfully!`;
+          setSaveSuccessMessage(successMsg);
+          setSavedMode("published");
+          toast.success(successMsg, { title: "Published" });
+        } else {
+          await unpublishRecipe(createdRecipeId, { token });
+          const successMsg = `"${recipe.title}" moved back to draft.`;
+          setSaveSuccessMessage(successMsg);
+          setSavedMode("draft");
+          toast.success(successMsg, { title: "Saved as draft" });
+        }
+        return;
+      }
+
       // Create recipe slug from title
       const baseSlug = recipe.title
         .toLowerCase()
@@ -251,26 +332,34 @@ export default function GeneratorPage() {
         dietaryLabels: recipe.dietaryLabels,
         allergenWarnings: recipe.allergenWarnings,
         nutrition: recipe.nutrition,
+        source: "ai",
       }, { token });
 
       let finalRecipe = created;
 
       if (publishImmediately) {
         finalRecipe = await publishRecipe(created.id, { token });
-        setSaveSuccessMessage(`Recipe published successfully!`);
+        const successMsg = `"${recipe.title}" published successfully!`;
+        setSaveSuccessMessage(successMsg);
+        setSavedMode("published");
+        toast.success(successMsg, { title: "Published" });
       } else {
-        setSaveSuccessMessage(`Saved as draft successfully!`);
+        const successMsg = `"${recipe.title}" saved as draft.`;
+        setSaveSuccessMessage(successMsg);
+        setSavedMode("draft");
+        toast.success(successMsg, { title: "Saved as draft" });
       }
 
       setCreatedRecipeId(finalRecipe.id);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("Failed to save recipe. Please sign in and try again.");
-      }
+      const msg =
+        err instanceof ApiError ? err.message : "Failed to save recipe. Please sign in and try again.";
+      setError(msg);
+      toast.error(msg, { title: "Save failed" });
     } finally {
+      saveInFlight.current = false;
       setIsSaving(false);
+      setSavingMode(null);
     }
   };
 
@@ -293,7 +382,22 @@ export default function GeneratorPage() {
       {/* Main Grid Layout */}
       <div className="grid gap-8 lg:grid-cols-12">
         {/* Form Column */}
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-5 space-y-4">
+          {prefillNotice && (
+            <Alert variant="success" title="Ingredients prefilled from photo">
+              <div className="flex items-start justify-between gap-3">
+                <span>{prefillNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setPrefillNotice(null)}
+                  aria-label="Dismiss prefill notice"
+                  className="shrink-0 text-xs font-semibold underline hover:no-underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </Alert>
+          )}
           <Card className="p-6">
             <form onSubmit={handleGenerate} className="space-y-6">
               {/* Pantry Ingredients Input */}
@@ -559,6 +663,24 @@ export default function GeneratorPage() {
                       Ingredients & Pantry Match
                     </h3>
                   </div>
+                  {pantryMatch && (
+                    <div
+                      className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-medium text-neutral-700"
+                      aria-live="polite"
+                    >
+                      <Badge variant="success" className="text-[10px]">
+                        {pantryMatch.usageCount} used from pantry
+                      </Badge>
+                      <Badge variant="warning" className="text-[10px]">
+                        {pantryMatch.missingCount} to buy
+                      </Badge>
+                      {pantryMatch.missingIngredients.length > 0 && (
+                        <span className="w-full text-neutral-600">
+                          Missing: {pantryMatch.missingIngredients.join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <ul className="mt-3 divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-neutral-50/50">
                     {(recipe.ingredients ?? []).map((ing: RecipeIngredient, idx: number) => (
                       <li
@@ -621,8 +743,9 @@ export default function GeneratorPage() {
                 </div>
 
                 {/* Nutrition Badge */}
-                <div className="mt-6">
+                <div className="mt-6 space-y-3">
                   <NutritionBadge nutrition={recipe.nutrition} variant="detailed" />
+                  <DisclaimerBanner kind="nutrition" />
                 </div>
 
                 {/* Flavor Pairings Interactive Section */}
@@ -698,18 +821,22 @@ export default function GeneratorPage() {
                       type="button"
                       variant="secondary"
                       onClick={() => handleSaveRecipe(false)}
-                      disabled={isSaving}
+                      disabled={isSaving || isDraftSaved}
+                      title={isDraftSaved ? "Already saved as draft" : undefined}
                     >
-                      {isSaving ? "Saving..." : "Save as Draft"}
+                      {isDraftSaved ? "Saved ✓" : savingMode === "draft" ? "Saving..." : "Save as Draft"}
                     </Button>
                     <Button
                       type="button"
                       variant="primary"
                       onClick={() => handleSaveRecipe(true)}
-                      disabled={isSaving}
+                      disabled={isSaving || isPublished}
+                      title={isPublished ? "Already published" : undefined}
                     >
                       <Check className="h-4 w-4" />
-                      <span>{isSaving ? "Publishing..." : "Publish Recipe"}</span>
+                      <span>
+                        {isPublished ? "Published ✓" : savingMode === "published" ? "Publishing..." : "Publish Recipe"}
+                      </span>
                     </Button>
                   </div>
                 </div>
@@ -719,5 +846,19 @@ export default function GeneratorPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function GeneratorPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+          <p className="text-center text-sm text-neutral-500">Loading recipe generator…</p>
+        </main>
+      }
+    >
+      <GeneratorContent />
+    </Suspense>
   );
 }
