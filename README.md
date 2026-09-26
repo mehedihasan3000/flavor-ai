@@ -1,429 +1,261 @@
 # FlavorAI 🍳
 
-> **Smart recipe generator & food-sharing platform** — turn your pantry ingredients into validated, AI-generated recipes. Built with Next.js 16, Express 4, MongoDB, and Groq AI.
+**Turn what's already in your kitchen into a full week of meals.**
 
-[![Backend Tests](https://img.shields.io/badge/backend_tests-204%20passing-brightgreen)](#)
-[![Frontend Tests](https://img.shields.io/badge/frontend_tests-15%20passing-brightgreen)](#)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
-[![Lint](https://img.shields.io/badge/lint-0%20warnings-brightgreen)](#)
+FlavorAI is a recipe and meal-planning website. You tell it what ingredients you have,
+what you like to eat, and how you want to eat — and it helps you cook real meals, plan
+your week, and shop without buying things twice.
+
+You can also share your own recipes, rate and review other people's, and browse what the
+community has made.
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Monorepo Layout](#monorepo-layout)
-- [Quick Start](#quick-start)
-  - [Prerequisites](#prerequisites)
-  - [Backend Setup](#backend-setup)
-  - [Frontend Setup](#frontend-setup)
-  - [Demo Seed Data](#demo-seed-data)
-- [Environment Variables](#environment-variables)
-- [Running in Development](#running-in-development)
-- [Running Tests](#running-tests)
-- [API Overview](#api-overview)
-- [Architecture Notes](#architecture-notes)
-- [AI & Nutrition Disclaimers](#ai--nutrition-disclaimers)
-- [Known Limitations](#known-limitations)
-- [Security Notes](#security-notes)
+- [What You Can Do](#what-you-can-do)
+- [Why It's Useful](#why-its-useful)
+- [How It's Built](#how-its-built)
+- [Getting Started](#getting-started)
+- [Demo Accounts](#demo-accounts)
+- [Accuracy & Safety](#accuracy--safety)
+- [Things to Know](#things-to-know)
+- [Project Documents](#project-documents)
 
 ---
 
-## Features
+## What You Can Do
 
-| Feature | Status |
-|---------|--------|
-| AI Recipe Generation (Groq) | ✅ |
-| Pantry-to-Plate ingredient matching | ✅ |
-| AI Flavor Pairing Suggestions | ✅ |
-| Manual Recipe CRUD (create, edit, draft, publish) | ✅ |
-| Recipe Search & Discovery (filters, text, pagination) | ✅ |
-| Ratings (1–5★, one per user, re-rate updates) | ✅ |
-| Comments (with XSS sanitization, moderation) | ✅ |
-| Favorites collection | ✅ |
-| User Profile & Dietary Preferences | ✅ |
-| User Dashboard (stats, draft management) | ✅ |
-| Admin Moderation Panel | ✅ |
-| JWT Auth Bridge (Better Auth ↔ Express) | ✅ |
-| Image Upload (ImgBB) | ✅ |
-| Responsive UI (mobile + desktop) | ✅ |
+### Get recipe ideas from what you already have
 
----
+Tell FlavorAI what's in your fridge and it will suggest a complete recipe — ingredients,
+step-by-step instructions, cooking time, and nutrition estimates. It also tells you which
+of your ingredients you actually used and which ones you still need to buy.
 
-## Tech Stack
+### Ask the AI Assistant anything
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 16 (App Router), TypeScript strict, Tailwind CSS v4 |
-| UI Icons | `@gravity-ui/icons` |
-| Auth Client | Better Auth (client session) |
-| Backend | Express 4, TypeScript strict, ESM/NodeNext |
-| Database | MongoDB + Mongoose 8 |
-| Validation | Zod (server-side, schema-first) |
-| AI Provider | Groq API (`openai/gpt-oss-120b` / `qwen/qwen3.6-27b` / `llama-3.3-70b-versatile`) |
-| Image Hosting | ImgBB |
-| Auth JWT | HS256 (shared secret, `jsonwebtoken`) |
-| Testing (backend) | Vitest + Supertest + `mongodb-memory-server` |
-| Testing (frontend) | Vitest + React Testing Library + jsdom |
+There's a chat assistant that knows your kitchen. You can say *"I have chicken, rice, and
+spinach — what can I make?"* or *"What's a good high-protein dinner?"* and it answers using
+your real pantry, your saved recipes, and your dietary preferences.
 
----
+### Snap a photo of your food and get its nutrition
 
-## Monorepo Layout
+Upload a picture of a meal and FlavorAI estimates the calories, protein, carbs, and fat,
+plus what's likely in it. Useful for tracking what you eat without weighing everything.
 
-```
-flavor-ai/
-├── backend/               Express REST API (Node ≥20, ESM)
-│   ├── src/
-│   │   ├── config/        env.ts (Zod validation), db.ts
-│   │   ├── controllers/   authController, userController, recipeController,
-│   │   │                  aiController, ratingController, commentController,
-│   │   │                  favoriteController, adminController, uploadController
-│   │   ├── middleware/     auth.ts, errorHandler.ts, validate.ts,
-│   │   │                  sanitizeInput.ts, rateLimiters.ts
-│   │   ├── models/        User, Recipe, Rating, Comment, Favorite, AIGenerationLog
-│   │   ├── routes/        v1.ts (root router), per-domain route files
-│   │   ├── services/      aiService.ts (Groq), imageService.ts (ImgBB)
-│   │   ├── types/         index.ts (Zod schemas + DTOs — source of truth)
-│   │   └── utils/         asyncHandler, params, password, regex, sanitize, recipeAccess
-│   ├── scripts/           seed.ts (demo data)
-│   ├── tests/             23 test files, 204 tests
-│   ├── .env.example       Copy to .env and fill values
-│   └── package.json
-│
-├── frontend/              Next.js App Router (TypeScript strict, Tailwind v4)
-│   ├── src/
-│   │   ├── app/           All page routes (App Router)
-│   │   │   ├── (auth)/    sign-in, sign-up
-│   │   │   ├── admin/     Admin moderation page
-│   │   │   ├── dashboard/ User dashboard
-│   │   │   ├── favorites/ Saved favorites
-│   │   │   ├── generator/ AI recipe generator
-│   │   │   ├── profile/   Profile & preferences
-│   │   │   └── recipes/   List, detail, create, edit
-│   │   ├── components/    auth/, recipes/, admin/, profile/, ui/
-│   │   └── lib/           api.ts, types.ts, auth-context.tsx, jwt.ts, format.ts
-│   ├── tests/             3 test files, 15 tests
-│   └── package.json
-│
-├── docs/
-│   └── API_CONTRACT.md    Frozen API shapes (endpoint/request/response reference)
-├── TASKS.md               Living roadmap
-├── AGENTS.md              Project rules for AI agents
-└── FlavorAI - SRS.md      Requirements document
-```
+### Plan your meals for the week
+
+Build a weekly meal plan and let FlavorAI fill in the meals for you. Happy with most of it?
+You can swap a single meal you don't like, or ask it to optimise the whole week to use up
+ingredients before they spoil and to better hit your nutrition targets.
+
+### Get a smart shopping list
+
+Turn a meal plan into a shopping list automatically. FlavorAI:
+
+- adds up everything you need across the week
+- **subtracts what you already have at home** — so you don't buy a third bottle of olive oil
+- groups items together (produce, dairy, spices) so the store trip is quicker
+- lets you tick things off as you shop
+- moves what you bought into your pantry when you get home
+
+### Keep track of your pantry
+
+Your own digital pantry. Add what you have, how much, and roughly when it expires. FlavorAI
+shows you what to use up first, and lets you tick ingredients off as you cook them.
+
+### Get a diet and nutrition plan
+
+Enter your height, weight, age, and activity level. FlavorAI calculates your BMI, estimates
+how many calories and grams of protein you need, and suggests a simple portion plan. It
+adapts to vegetarian, vegan, and dairy-free preferences.
+
+### Find recipes you'll actually like
+
+Already have favourites or "no fish" rules? Taste Match ranks existing recipes against what
+you like, so you can find a new meal that fits your taste rather than scrolling forever.
+
+### Share with other cooks
+
+Write your own recipes, save drafts while you work on them, and publish when they're ready.
+Other members can rate them 1–5 stars, leave comments, and save them to their favourites.
 
 ---
 
-## Quick Start
+## Why It's Useful
 
-### Prerequisites
-
-- **Node.js ≥ 20** (`node --version`)
-- **MongoDB** — [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) (free tier) or a local instance
-- **Groq API key** — [console.groq.com](https://console.groq.com)
-- **ImgBB API key** — [api.imgbb.com](https://api.imgbb.com) (free, for image uploads)
+| Problem | How FlavorAI helps |
+|---|---|
+| "I have food but no idea what to make" | Generates a full recipe from your actual ingredients |
+| Food going bad in the fridge | Highlights what to use first and plans meals around it |
+| Buying the same ingredient twice | Shopping lists subtract what you already have at home |
+| Unclear what a meal contains | Photo analysis estimates calories and macros |
+| Planning meals takes forever | Generates a full week, and swaps one meal on request |
+| Guessing at daily nutrition targets | Calculates a calorie and protein target from your body and activity |
+| Endless scrolling to find recipes you like | Taste Match ranks recipes by your preferences |
 
 ---
 
-### Backend Setup
+## How It's Built
+
+**Made with:** Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · Express 4 · MongoDB ·
+Groq AI · Vitest
+
+**The project has two parts:**
+
+- **`backend/`** — the API server. Handles accounts, recipes, reviews, the pantry, meal
+  plans, shopping lists, and all the AI features. Runs on port `4000`.
+- **`frontend/`** — the website you actually use. Runs on port `3000`.
+
+The two run separately and talk to each other over the internet. There is no root-level
+build — each part is set up and run on its own.
+
+**Quality checks:** 389 automated tests on the backend and 99 on the frontend, all passing,
+plus strict type checking and linting with zero warnings.
+
+---
+
+## Getting Started
+
+You'll need **Node.js 20 or newer**, a **MongoDB** database (a free
+[MongoDB Atlas](https://www.mongodb.com/cloud/atlas) account works), a free
+**Groq API key** from [console.groq.com](https://console.groq.com), and a free
+**ImgBB API key** from [api.imgbb.com](https://api.imgbb.com) for recipe photos.
+
+### 1. Start the server
 
 ```bash
 cd backend
-
-# 1. Install dependencies
 npm install
-
-# 2. Copy the env template and fill in your values
-cp .env.example .env
-# Edit .env — see "Environment Variables" section below
-
-# 3. Verify the build
-npm run build
-
-# 4. Start the dev server (runs on port 4000 by default)
-npm run dev
+cp .env.example .env     # then open .env and fill in your keys
+npm run dev              # runs on http://localhost:4000
 ```
 
-The API will be available at `http://localhost:4000/api/v1`.  
-Health check: `GET http://localhost:4000/api/v1/health`
+Check it's alive: visit `http://localhost:4000/api/v1/health` — you should see `"ok"`.
 
----
-
-### Frontend Setup
+### 2. Start the website
 
 ```bash
 cd frontend
-
-# 1. Install dependencies
 npm install
-
-# 2. Create the frontend env file (minimal — just the API URL)
-echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1" > .env.local
-echo "JWT_SECRET=dev-only-change-me-please" >> .env.local
-
-# Note: JWT_SECRET MUST match backend/.env JWT_SECRET exactly for the
-# auth bridge to work. Both sides sign/verify with the same HS256 secret.
-
-# 3. Start the dev server (runs on port 3000 by default)
-npm run dev
+cp .env.example .env.local   # then fill in the API address and the same JWT_SECRET
+npm run dev              # runs on http://localhost:3000
 ```
 
-The app will be available at `http://localhost:3000`.
+Then open **http://localhost:3000** in your browser.
+
+> **Important:** the `JWT_SECRET` value must be **identical** in both files. That's how the
+> two parts confirm you are signed in. If they don't match, nothing that requires signing in
+> will work.
+
+### 3. Or use Docker
+
+If you have Docker installed, one command starts everything (database, server, and website):
+
+```bash
+docker compose up --build
+```
+
+### Environment variables at a glance
+
+| Variable | Where | What it's for |
+|----------|-------|---------------|
+| `MONGODB_URI` | backend | Your database connection string — **required** |
+| `JWT_SECRET` | **both** | Shared sign-in key — **required**, must match |
+| `GROQ_API_KEY` | backend | Enables the AI features |
+| `GROQ_MODEL` / `GROQ_MODEL_FOR_IMAGE` | backend | Which AI model to use (text / photos) |
+| `AI_REQUEST_TIMEOUT_MS` | backend | How long to wait for the AI (default 60s) |
+| `IMGBB_API_KEY` | backend | Recipe photo uploads |
+| `CORS_ORIGINS` | backend | Which website addresses are allowed to connect |
+| `NEXT_PUBLIC_API_URL` | frontend | Where the backend lives (default `http://localhost:4000/api/v1`) |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | frontend | Optional — enables "Sign in with Google" |
+
+Full list and descriptions: `backend/.env.example` and `frontend/.env.example`.
+
+### Everyday commands
+
+| What you want | Type this |
+|---------------|-----------|
+| Start the server | `cd backend && npm run dev` |
+| Start the website | `cd frontend && npm run dev` |
+| Run all the tests | `npm test` (in either folder) |
+| Check for errors | `npm run lint` then `npm run build` (in either folder) |
+| Load the sample content | `cd backend && npm run seed` |
+| Update database indexes before going live | `cd backend && npm run db:indexes` |
 
 ---
 
-### Demo Seed Data
+## Demo Accounts
 
-After both services are running (backend `.env` is required):
+Load the sample content to try the site without creating real recipes:
 
 ```bash
 cd backend
 npm run seed
 ```
 
-This creates:
-- **Admin account** — `admin@flavorai.demo` (role: `admin`)
-- **Regular user** — `chef@flavorai.demo` (role: `user`)
-- **3 published AI-generated recipes** with ratings, comments, and favorites
+This safely creates (re-running is fine):
 
-To sign in as a demo account, click the **"Demo Admin"** or **"Demo User"** buttons on the sign-in page.
+| Account | Email | Password |
+|---|---|---|
+| Admin | `admin@flavorai.com` | `admin123456` |
+| Regular user | `chef@flavorai.com` | `password123` |
 
----
-
-## Environment Variables
-
-### `backend/.env` (required — copy from `.env.example`)
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `NODE_ENV` | Environment | `development` |
-| `PORT` | API port | `4000` |
-| `CORS_ORIGINS` | Allowed frontend origin(s) | `http://localhost:3000` |
-| `MONGODB_URI` | MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/flavorai` |
-| `JWT_SECRET` | Shared HS256 signing secret | `your-32-char-secret-key` |
-| `JWT_ISSUER` | JWT `iss` claim | `flavorai` |
-| `JWT_AUDIENCE` | JWT `aud` claim | `flavorai-api` |
-| `JWT_EXPIRES_IN` | Token expiry | `15m` |
-| `GROQ_API_KEY` | Groq API key | `gsk_...` |
-| `GROQ_MODEL` | Groq model ID | `openai/gpt-oss-120b` |
-| `AI_REQUEST_TIMEOUT_MS` | AI call timeout (≤30000) | `30000` |
-| `IMGBB_API_KEY` | ImgBB API key | `abc123...` |
-| `IMGBB_API_URL` | ImgBB upload endpoint | `https://api.imgbb.com/1/upload` |
-
-> ⚠️ **Never commit `.env` to version control.** It is gitignored.
-
-### `frontend/.env.local`
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEXT_PUBLIC_API_URL` | Backend API base URL | `http://localhost:4000/api/v1` |
-| `JWT_SECRET` | Must match backend `JWT_SECRET` | — |
+It also creates **3 published recipes** with ratings, comments, and saves already attached,
+so the site doesn't look empty. The sign-in page has **"Demo User"** and **"Demo Admin"**
+buttons that fill these details in for you.
 
 ---
 
-## Running in Development
+## Accuracy & Safety
 
-**Both services must run simultaneously:**
+Please read this before relying on FlavorAI's output.
 
-```bash
-# Terminal 1 — Backend
-cd backend && npm run dev
+1. **Allergies and dietary needs are never guaranteed.** The AI tries to avoid the
+   ingredients you tell it to avoid, but it can make mistakes. If you have a food allergy,
+   check every ingredient yourself before cooking. Warnings are shown throughout the app
+   for this reason — please don't skip them.
 
-# Terminal 2 — Frontend
-cd frontend && npm run dev
-```
+2. **Nutrition numbers are estimates.** Calories, protein, carbs, and fat — including
+   anything from a photo — are AI guesses. They are not from a verified nutrition database.
+   Don't use them for medical or clinical decisions. Talk to a dietitian or doctor for
+   advice that matters.
 
----
+3. **BMI and calorie targets are screening tools**, not diagnoses. They use standard
+   formulas and can be wrong for a lot of people.
 
-## Running Tests
+4. **Recipes are untested.** Nobody has cooked these in a real kitchen yet. Timings,
+   temperatures, and quantities may need adjusting. Trust your cooking judgement.
 
-### Backend
-
-```bash
-cd backend
-
-npm test                          # Run all 23 test suites (204 tests)
-npx vitest run tests/types.test.ts   # Run a single file
-npm run lint                      # ESLint (0 warnings required)
-npm run build                     # TypeScript build check
-```
-
-### Frontend
-
-```bash
-cd frontend
-
-npm test           # Run all 3 test suites (15 tests)
-npm run lint       # ESLint (0 warnings)
-npm run build      # Next.js production build verification
-```
+5. **Nothing here is medical advice.** For significant dietary changes, speak to a
+   healthcare professional.
 
 ---
 
-## API Overview
+## Things to Know
 
-Base URL: `http://localhost:4000/api/v1`
-
-Full reference: [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
-
-### Auth
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/auth/token/verify` | Bearer JWT | Verify token, upsert user |
-| `POST` | `/auth/logout` | Bearer JWT | Stateless logout (204) |
-
-### Users
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/users/me` | ✅ | Get own profile + preferences |
-| `PATCH` | `/users/me` | ✅ | Update profile/preferences |
-| `GET` | `/users/me/stats` | ✅ | Dashboard stats (recipe counts, avg rating) |
-
-### Recipes
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/recipes` | Optional | Paginated search with filters |
-| `POST` | `/recipes` | ✅ | Create recipe (draft) |
-| `GET` | `/recipes/:id` | Optional | Recipe detail |
-| `PATCH` | `/recipes/:id` | Owner/Admin | Edit recipe |
-| `DELETE` | `/recipes/:id` | Owner/Admin | Delete recipe |
-| `PATCH` | `/recipes/:id/publish` | Owner | Publish draft |
-| `PATCH` | `/recipes/:id/unpublish` | Owner | Unpublish → draft |
-
-### AI
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/ai/recipes/generate` | ✅ | Generate AI recipe from pantry |
-| `POST` | `/ai/flavor-pairings` | ✅ | Suggest flavor pairings |
-
-### Ratings
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/recipes/:id/ratings` | Optional | Rating summary (+ `myRating` when authenticated) |
-| `PUT` | `/recipes/:id/ratings` | ✅ | Rate or re-rate recipe (1–5) |
-| `DELETE` | `/recipes/:id/ratings` | ✅ | Remove own rating |
-
-### Comments
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/recipes/:id/comments` | — | Paginated comment list |
-| `POST` | `/recipes/:id/comments` | ✅ | Add comment |
-| `PATCH` | `/comments/:id` | Author | Edit own comment |
-| `DELETE` | `/comments/:id` | Author/Admin | Delete comment |
-
-### Favorites
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/favorites` | ✅ | List own favorites (published only) |
-| `GET` | `/favorites/:recipeId` | ✅ | Check if a recipe is favorited |
-| `PUT` | `/favorites/:recipeId` | ✅ | Add to favorites (idempotent) |
-| `DELETE` | `/favorites/:recipeId` | ✅ | Remove from favorites |
-
-### Upload
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/upload/image` | ✅ | Upload recipe image to ImgBB |
-
-### Admin
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/admin/users` | Admin | List users with search/role filter |
-| `GET` | `/admin/recipes` | Admin | List all recipes across statuses |
-| `PATCH` | `/admin/recipes/:id` | Admin | Moderate recipe (published↔hidden) |
-| `DELETE` | `/admin/recipes/:id` | Admin | Force-delete recipe |
-| `GET` | `/admin/comments` | Admin | List comments with moderation filter |
-| `PATCH` | `/admin/comments/:id` | Admin | Moderate comment (visible↔hidden) |
-| `DELETE` | `/admin/comments/:id` | Admin | Force-delete comment |
-
-### Error Envelope
-
-All errors follow the standard shape:
-
-```json
-{
-  "status": 400,
-  "code": "VALIDATION_ERROR",
-  "safeMessage": "Invalid input data.",
-  "validation": { "title": "Too short" }
-}
-```
+| Area | What's the case |
+|------|-----------------|
+| Food photos | Uploads are large. When hosted on Vercel there's a ~4.5 MB limit, so photos are automatically shrunk on your device before sending |
+| Photo analysis speed | The AI reads the image in stages, so it can take a few seconds. That's normal |
+| AI quality | The AI writes well but isn't perfect. Unusual ingredient combinations can produce odd suggestions |
+| Shopping list budget | You can type a budget, but prices aren't looked up — it's a display-only field |
+| Signing you out | Sessions last a while with no "remember me" flow, so you may need to sign in again after a long break |
+| Recipe photos | Free ImgBB hosting — photos are publicly viewable by URL |
+| Not built yet | Following other cooks, notifications, and a social feed are planned but not ready |
 
 ---
 
-## Architecture Notes
+## Project Documents
 
-### Auth Bridge
+More detail lives in these files if you're looking for something specific:
 
-Better Auth handles client sessions. Protected API requests carry a signed **Bearer JWT** (HS256). `middleware/auth.ts` verifies signature, issuer, audience, and expiry → attaches `req.user`. The `JWT_SECRET` **must match** between frontend (mint) and backend (verify).
-
-### AI Output Validation
-
-All Groq AI output is **server-side Zod-validated** before storage. Invalid/incomplete output is rejected with a retryable error — it is never stored. Timeouts cap at 30 seconds.
-
-### Recipe Status Flow
-
-```
-draft → published → hidden (admin)
-      ↑              ↓
-      └──────────────┘ (unpublish)
-```
-
-Only `published` recipes are visible in public discovery. Drafts are owner+admin only. Hidden recipes are admin-only.
-
-### Indexes (ensure these exist in production)
-
-`autoIndex` is disabled in production. Run `db.syncIndexes()` or use a migration before release:
-- `User`: unique `email`, sparse unique `providerId`
-- `Recipe`: unique `slug`, text index `(title, summary, ingredients.name)`, `(status, publishedAt)`, `(owner, createdAt)`
-- `Rating`, `Favorite`: unique `(recipe, user)` compound
-- `Comment`: `(recipe, createdAt)`
-- `AIGenerationLog`: `(user, createdAt)`
-
----
-
-## AI & Nutrition Disclaimers
-
-> ⚠️ **IMPORTANT: Read before using AI-generated content**
-
-1. **Allergy & Dietary Safety**: AI-generated recipes may not be safe for all dietary restrictions or allergies. The system attempts to avoid specified allergens but **cannot guarantee allergen-free results**. Always verify ingredients independently if you have food allergies.
-
-2. **Nutrition Estimates**: Calorie and macro estimates are **approximate** and generated by AI without access to verified nutrition databases. They should not be used for medical, clinical, or precise dietary management. Consult a registered dietitian for accurate nutritional guidance.
-
-3. **Recipe Quality**: AI-generated recipes have not been tested in a real kitchen. Cooking times, temperatures, and quantities may need adjustment. Use culinary judgment when following AI-generated instructions.
-
-4. **Not Medical Advice**: Nothing in this application constitutes medical or nutritional advice. Consult a healthcare professional before making significant dietary changes.
-
----
-
-## Known Limitations
-
-| Area | Limitation | Notes |
-|------|-----------|-------|
-| AI Flavor Pairings | May produce generic suggestions for uncommon ingredient combos | Groq output quality varies by model |
-| Nutrition Estimates | AI-estimated only, not from a verified database | Post-MVP: integrate a nutrition API |
-| Image Upload | Relies on ImgBB free tier (32MB limit, public URLs) | Post-MVP: migrate to S3/Cloudinary |
-| Admin Comment Context | Admin panel shows raw author/recipe IDs, not populated names | Minor UX gap, not a data integrity issue |
-| Auth Sessions | Stateless JWT (no refresh tokens in MVP) | 15-minute expiry; re-sign-in required |
-| No Rate Limits on GET Routes | Public read routes only covered by base limiter | Acceptable for MVP scale |
-| Post-MVP Features | Taste-profile recommendations, food-photo nutrition analysis, meal planning, social feeds | Documented in SRS §6.4 |
-
----
-
-## Security Notes
-
-- **JWT secrets** are never exposed to browser JS
-- **NoSQL injection** defended by `sanitizeInput.ts` (strips `$`-prefixed keys) + per-endpoint Zod validation
-- **XSS** on comment bodies defended by `utils/sanitize.ts` (HTML tag stripping before storage)
-- **IDOR** prevented: all mutations scoped to `req.user.id` or gated by `requireAdmin`
-- **CSRF**: not applicable in MVP (Bearer JWT, no cookie sessions); revisit if cookie sessions are adopted
-- **Rate limiting**: `baseLimiter` app-wide; stricter limiters on auth, AI, upload, and comment endpoints
-- **Passwords** (if used via custom credentials): `crypto.scrypt` + `timingSafeEqual`, never stored/returned in plain text
-- **Production checklist**:
-  - [ ] Rotate `JWT_SECRET` to a cryptographically random value (≥32 chars)
-  - [ ] Set `NODE_ENV=production`  
-  - [ ] Enable HTTPS / TLS termination at reverse proxy
-  - [ ] Run `db.syncIndexes()` before first deployment
-  - [ ] Set `CORS_ORIGINS` to your production frontend domain only
-  - [ ] Configure log aggregation (structured JSON logs via `morgan`)
-  - [ ] Set up MongoDB Atlas IP allowlist and strong auth credentials
+| File | What's in it |
+|------|-------------|
+| [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) | Every endpoint the server offers, with exact request and response formats |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | How to put the site online |
+| [`TASKS.md`](TASKS.md) | Project roadmap, what's done, what's next |
+| [`FlavorAI - SRS.md`](FlavorAI%20-%20SRS.md) | The original requirements document |
+| [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | The technical plan |
+| [`AGENTS.md`](AGENTS.md) | Conventions and rules for AI coding tools working on this repo |
+| [`ERROR.md`](ERROR.md) | Record of problems hit and how they were solved |
