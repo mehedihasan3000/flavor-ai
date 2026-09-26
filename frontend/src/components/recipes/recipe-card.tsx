@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bookmark, Clock, Sparkles, Target } from "@gravity-ui/icons";
+import { Bookmark, Clock, Sparkles } from "@gravity-ui/icons";
 import type { RecipeCardData } from "@/lib/types";
 import { formatEnumLabel } from "@/lib/format";
 import { Badge, Card } from "@/components/ui";
@@ -8,14 +8,10 @@ import { RatingStars } from "./rating-stars";
 export interface RecipeCardProps {
   recipe: RecipeCardData;
   className?: string;
-  /** Taste Matcher result score (0-100), rendered as a corner badge when present. */
-  matchScore?: number;
-  /** Tooltip text explaining the taste match, shown on the score badge. */
-  matchReason?: string;
 }
 
 /** Recipe summary card used across discovery/favorites/dashboard grids. */
-export function RecipeCard({ recipe, className = "", matchScore, matchReason }: RecipeCardProps) {
+export function RecipeCard({ recipe, className = "" }: RecipeCardProps) {
   const visibleDietaryLabels = recipe.dietaryLabels.slice(0, 2);
   const extraDietaryCount = recipe.dietaryLabels.length - visibleDietaryLabels.length;
 
@@ -53,16 +49,6 @@ export function RecipeCard({ recipe, className = "", matchScore, matchReason }: 
               className="absolute right-2 top-2 bg-card/90 shadow-sm backdrop-blur-sm"
             >
               {formatEnumLabel(recipe.status)}
-            </Badge>
-          )}
-          {typeof matchScore === "number" && (
-            <Badge
-              variant="secondary"
-              className="absolute bottom-2 right-2 bg-card/90 shadow-sm backdrop-blur-sm"
-              title={matchReason}
-            >
-              <Target className="size-3" aria-hidden="true" />
-              {Math.round(matchScore)}% match
             </Badge>
           )}
         </div>
