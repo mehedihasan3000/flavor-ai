@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Magnifier, Sparkles } from "@gravity-ui/icons";
+import { ChevronLeft, ChevronRight, Magnifier } from "@gravity-ui/icons";
 import { ApiError, listRecipes } from "@/lib/api";
 import type {
   Difficulty,
@@ -15,7 +15,6 @@ import type {
 import { formatEnumLabel } from "@/lib/format";
 import { Button, EmptyState, ErrorState, Input, LoadingState, Select, Skeleton } from "@/components/ui";
 import { RecipeCard } from "@/components/recipes/recipe-card";
-import { TasteMatchPanel } from "@/components/recipes/taste-match-panel";
 
 const CATEGORY_OPTIONS: RecipeCategory[] = [
   "main-course",
@@ -81,15 +80,6 @@ function RecipesContent() {
   const pageParam = Number(searchParams.get("page") ?? "1");
   const page = Number.isFinite(pageParam) && pageParam >= 1 ? pageParam : 1;
 
-  const mode = searchParams.get("mode") === "taste" ? "taste" : "browse";
-  const switchMode = (nextMode: "browse" | "taste") => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (nextMode === "browse") params.delete("mode");
-    else params.set("mode", "taste");
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
-  };
-
   // Free-text filters only apply to the URL (and therefore the search) on submit.
   const [searchInput, setSearchInput] = useState(q);
   const [cuisineInput, setCuisineInput] = useState(cuisine);
@@ -152,11 +142,10 @@ function RecipesContent() {
   );
 
   useEffect(() => {
-    if (mode !== "browse") return;
     const controller = new AbortController();
     void loadRecipes(controller.signal);
     return () => controller.abort();
-  }, [mode, loadRecipes]);
+  }, [loadRecipes]);
 
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>) => {
@@ -212,36 +201,6 @@ function RecipesContent() {
         </p>
       </div>
 
-      <div className="mb-6 inline-flex gap-1 rounded-button border border-border bg-card p-1" role="tablist">
-        <Button
-          type="button"
-          variant={mode === "browse" ? "primary" : "outline"}
-          size="sm"
-          role="tab"
-          aria-selected={mode === "browse"}
-          className={mode === "browse" ? "" : "border-transparent"}
-          onClick={() => switchMode("browse")}
-        >
-          Browse
-        </Button>
-        <Button
-          type="button"
-          variant={mode === "taste" ? "primary" : "outline"}
-          size="sm"
-          role="tab"
-          aria-selected={mode === "taste"}
-          className={mode === "taste" ? "" : "border-transparent"}
-          onClick={() => switchMode("taste")}
-        >
-          <Sparkles className="size-4" aria-hidden="true" />
-          Match my taste
-        </Button>
-      </div>
-
-      {mode === "taste" ? (
-        <TasteMatchPanel />
-      ) : (
-        <>
       <form
         onSubmit={handleSearchSubmit}
         className="mb-6 space-y-3 rounded-card border border-border bg-card p-4"
@@ -431,12 +390,9 @@ function RecipesContent() {
           )}
         </>
       )}
-        </>
-      )}
     </main>
   );
 }
-
 
 export default function RecipesPage() {
   return (
