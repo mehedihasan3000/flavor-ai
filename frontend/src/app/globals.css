@@ -106,6 +106,26 @@
   }
 }
 
+@keyframes hero-progress-sweep {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Constant-velocity 0% → 100% sweep (linear, transform-only). Duration is set
+   inline from the carousel's cycle length so the two stay in sync; the element
+   is remounted per slide (React key) to restart the sweep. */
+.hero-progress-bar {
+  transform: scaleX(0);
+  transform-origin: left;
+  animation-name: hero-progress-sweep;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
 .home-marquee-track {
   display: flex;
   width: max-content;
@@ -130,6 +150,10 @@
   .home-marquee-track {
     animation: none !important;
     transform: none !important;
+  }
+
+  .hero-progress-bar {
+    animation: none !important;
   }
 }
 
