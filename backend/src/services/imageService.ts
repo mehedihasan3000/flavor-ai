@@ -9,9 +9,11 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
-// Transport limit for decoded image bytes. The photo-nutrition route accepts
-// base64/URL payloads up to this size (frontend compresses 10–15 MB originals
-// down below it; originals above 15 MB are rejected client-side).
+// Backend validation ceiling for decoded image bytes (non-Vercel runtimes).
+// Production Vercel traffic never reaches this: the frontend compresses
+// everything over ~2.8 MB binary (≈3.8 MB JSON) to stay under Vercel's hard
+// 4.5 MB edge cap, so payloads arriving here are small. The 10 MB ceiling
+// only governs localhost/Docker/Render and direct API callers.
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export interface ImageUploadInput {
