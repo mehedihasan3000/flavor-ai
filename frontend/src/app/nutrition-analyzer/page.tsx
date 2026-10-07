@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { Sparkles, ArrowRotateRight, TriangleExclamation, Camera } from "@gravity-ui/icons";
 import { AuthGuard } from "@/components/auth";
-import { PhotoDropzone } from "@/components/nutrition/photo-dropzone";
+import { PhotoDropzone, VERCEL_SAFE_JSON_LIMIT_BYTES } from "@/components/nutrition/photo-dropzone";
 import { NutritionBreakdownView } from "@/components/nutrition/nutrition-breakdown-view";
 import { Button, Input, Textarea, Alert, Spinner } from "@/components/ui";
-import { analyzeFoodPhoto } from "@/lib/api";
+import { analyzeFoodPhoto, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { FoodPhotoAnalysisResult } from "@/lib/types";
 
@@ -56,19 +56,32 @@ export default function NutritionAnalyzerPage() {
     setAnalyzing(true);
     setError(null);
 
+    // Preflight: Vercel rejects JSON bodies over 4.5 MB with a bare 413 that
+    // carries no CORS headers (browser reports it as CORS/ERR_FAILED). Never
+    // send a payload that large — fail locally with a clear message instead.
+    const payload = {
+      image: selectedImage,
+      mimeType,
+      filename,
+      mealContext: mealContext.trim() || undefined,
+      notes: notes.trim() || undefined,
+    };
+    const payloadBytes = new TextEncoder().encode(JSON.stringify(payload)).length;
+    if (payloadBytes > VERCEL_SAFE_JSON_LIMIT_BYTES) {
+      setError(
+        `This photo (≈${(payloadBytes / (1024 * 1024)).toFixed(1)} MB upload) exceeds the secure upload limit. Please re-select it — large photos are auto-optimized — or use a smaller image.`,
+      );
+      setAnalyzing(false);
+      return;
+    }
+
     // Backend vision timeout is 60s — abort just beyond it so the UI never hangs.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 70_000);
 
     try {
       const result = await analyzeFoodPhoto(
-        {
-          image: selectedImage,
-          mimeType,
-          filename,
-          mealContext: mealContext.trim() || undefined,
-          notes: notes.trim() || undefined,
-        },
+        payload,
         token ? { token, signal: controller.signal } : { signal: controller.signal },
       );
 
@@ -76,6 +89,15 @@ export default function NutritionAnalyzerPage() {
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") {
         setError("Analysis timed out after ~60 seconds. Please try again with a smaller photo.");
+      } else if (err instanceof ApiError && err.status === 413) {
+        setError(err.message);
+      } else if (err instanceof ApiError && err.status === 0 && payloadBytes > 3_500_000) {
+        // Vercel edge 413s carry no CORS headers, so the browser surfaces them
+        // as a network failure (status 0), not a readable 413. A large payload
+        // + unreachable API almost certainly means the edge cap tripped.
+        setError(
+          "This photo is too large to upload through our secure serverless API. Please re-select it so it gets auto-optimized, or use a smaller image.",
+        );
       } else {
         const msg =
           err instanceof Error

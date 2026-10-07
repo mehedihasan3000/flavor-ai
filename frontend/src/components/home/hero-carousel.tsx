@@ -11,6 +11,9 @@ interface HeroCarouselProps {
   recipes: Recipe[];
 }
 
+/** Seconds each slide stays visible before auto-advancing. */
+const AUTO_ADVANCE_SECONDS = 5;
+
 const DEFAULT_FALLBACK_RECIPE: Partial<Recipe> = {
   id: "default-hero",
   title: "Artisan Kitchen Showcase",
@@ -23,7 +26,7 @@ const DEFAULT_FALLBACK_RECIPE: Partial<Recipe> = {
 
 export function HeroCarousel({ recipes }: HeroCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [secondsLeft, setSecondsLeft] = useState(5);
+  const [secondsLeft, setSecondsLeft] = useState(AUTO_ADVANCE_SECONDS);
   const [isHovered, setIsHovered] = useState(false);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
@@ -32,37 +35,56 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
   const currentRecipe = displayRecipes[activeIndex] ?? displayRecipes[0];
 
   const handlePrev = useCallback(() => {
-    setSecondsLeft(5);
+    setSecondsLeft(AUTO_ADVANCE_SECONDS);
     setActiveIndex((prev) => (prev === 0 ? count - 1 : prev - 1));
   }, [count]);
 
   const handleNext = useCallback(() => {
-    setSecondsLeft(5);
+    setSecondsLeft(AUTO_ADVANCE_SECONDS);
     setActiveIndex((prev) => (prev + 1) % count);
   }, [count]);
 
   const handleSelectDot = (idx: number) => {
-    setSecondsLeft(5);
+    setSecondsLeft(AUTO_ADVANCE_SECONDS);
     setActiveIndex(idx);
   };
 
-  // 1-Second tick-down timer that syncs the 5s auto-sliding carousel & visual countdown.
-  // Zero synchronous setState inside useEffect body.
+  // 1-second tick-down that drives both the auto-advance and the progress bar,
+  // so the two can never desync. Pauses on hover. Advancing and resetting
+  // happen together in one cancelable timeout, so `secondsLeft` never renders
+  // 0 and hover/unmount always cancels the hop. Zero synchronous setState
+  // inside the effect body (React Compiler rules).
   useEffect(() => {
     if (count <= 1 || isHovered) return;
-
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          setActiveIndex((current) => (current + 1) % count);
-          return 5;
-        }
-        return prev - 1;
-      });
+    if (secondsLeft <= 1) {
+      const timer = setTimeout(() => {
+        setActiveIndex((current) => (current + 1) % count);
+        setSecondsLeft(AUTO_ADVANCE_SECONDS);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+    const timer = setTimeout(() => {
+      setSecondsLeft((prev) => prev - 1);
     }, 1000);
+    return () => clearTimeout(timer);
+  }, [count, isHovered, secondsLeft]);
 
-    return () => clearInterval(timer);
-  }, [count, isHovered]);
+  // Warm the browser cache for upcoming slides so transitions never pop in
+  // a half-loaded image mid-crossfade. Keyed on the URL content (not array
+  // identity) so re-renders with the same images don't re-warm; covers the
+  // empty-state fallback too.
+  const imageUrlKey = recipes.map((r) => r.imageUrl ?? "").join("\n");
+  useEffect(() => {
+    const urls = new Set(imageUrlKey.split("\n").filter(Boolean));
+    if (urls.size === 0) {
+      const fallback = DEFAULT_FALLBACK_RECIPE.imageUrl;
+      if (fallback) urls.add(fallback);
+    }
+    for (const url of urls) {
+      const img = new Image();
+      img.src = url;
+    }
+  }, [imageUrlKey]);
 
   const handleImageError = (id: string) => {
     setImageErrors((prev) => ({ ...prev, [id]: true }));
@@ -81,7 +103,10 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
         className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-tr from-primary/25 via-amber-400/25 to-secondary/20 blur-3xl -z-10"
       />
 
-      <HeroFloat delay={0} className="w-full flex justify-center lg:justify-end">
+      {/* NOTE: deliberately no float wrapper around the whole card — animating
+          a transform loop over this large layer (image + blurs + shadows) every
+          frame caused visible jank. Only the small rating badge floats. */}
+      <div className="w-full flex justify-center lg:justify-end">
         <div
           className="relative w-full max-w-lg sm:max-w-xl lg:max-w-2xl xl:max-w-3xl"
           onMouseEnter={() => setIsHovered(true)}
@@ -89,33 +114,47 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
           aria-roledescription="carousel"
           aria-label="Top rated community recipes slider"
         >
-          {/* Prominent Showcase Card Container */}
-          <div className="group relative overflow-hidden rounded-[2rem] border border-white/80 bg-card shadow-2xl transition-transform duration-500 hover:scale-[1.01]">
-            
-            {/* Visual 5-Second Sync Countdown Progress Bar */}
+          {/* Prominent Showcase Card Container. NOTE: no hover zoom on the card
+              itself — scaling this layer (overflow-hidden + backdrop-blur
+              children + hairline borders) to fractional pixels opened a
+              subpixel seam at the image/nav junction (the thin white line) and
+              made the bottom controls shimmer while repainting. The image keeps
+              its own contained zoom below, which can't seam. */}
+          <div className="group relative overflow-hidden rounded-[2rem] border border-white/80 bg-card shadow-2xl">
+
+            {/* Visual Sync Countdown Progress Bar — a pure CSS linear sweep
+                (see .hero-progress-bar in globals.css). Constant velocity from
+                0% to 100% by construction: no JS ticks, no retargeting, so the
+                final second moves exactly like the first. Duration matches the
+                auto-advance cycle; the React key restarts the sweep per slide,
+                and animationPlayState freezes it mid-sweep on hover. The slide
+                switch itself stays timeout-driven right below. */}
             {count > 1 && (
               <div className="absolute top-0 left-0 right-0 z-20 h-1.5 w-full bg-black/30 backdrop-blur-xs overflow-hidden">
-                <m.div
-                  key={`progress-${activeIndex}-${isHovered}`}
-                  initial={{ width: "0%" }}
-                  animate={{ width: isHovered ? "0%" : "100%" }}
-                  transition={{
-                    duration: isHovered ? 0 : 5,
-                    ease: "linear",
+                <div
+                  key={activeIndex}
+                  aria-hidden="true"
+                  data-testid="hero-progress"
+                  className="hero-progress-bar h-full w-full bg-gradient-to-r from-amber-400 via-primary to-amber-500 shadow-sm"
+                  style={{
+                    animationDuration: `${AUTO_ADVANCE_SECONDS}s`,
+                    animationPlayState: isHovered ? "paused" : "running",
                   }}
-                  className="h-full bg-gradient-to-r from-amber-400 via-primary to-amber-500 shadow-sm"
                 />
               </div>
             )}
 
             <div className="relative aspect-square sm:aspect-[4/3] lg:aspect-[4/3] w-full overflow-hidden">
-              <AnimatePresence mode="wait" initial={false}>
+              {/* Default (sync) crossfade: slides are absolutely positioned, so the
+                  outgoing and incoming slides overlap with no blank gap. The old
+                  mode="wait" forced a visible empty flash between slides. */}
+              <AnimatePresence initial={false}>
                 <m.div
                   key={currentRecipe?.id ?? activeIndex}
-                  initial={{ opacity: 0, x: 25 }}
+                  initial={{ opacity: 0, x: 32 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -25 }}
-                  transition={{ duration: 0.35, ease: "easeInOut" }}
+                  exit={{ opacity: 0, x: -32 }}
+                  transition={{ duration: 0.45, ease: [0.32, 0.72, 0, 1] }}
                   className="absolute inset-0 h-full w-full"
                 >
                   {hasImage ? (
@@ -220,12 +259,14 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
             )}
           </div>
 
-          {/* Top Rating Badge Overlay */}
+          {/* Top Rating Badge Overlay — the only floating element: small and cheap */}
           {currentRecipe && (
             <HeroFloat delay={0.3} className="absolute -left-3 -top-5 sm:-left-6 sm:-top-6 z-30">
               <div className="rounded-card border border-border/80 bg-card/95 p-3.5 shadow-xl backdrop-blur-md transition-transform hover:-translate-y-1">
                 <div className="flex items-center gap-1.5 text-amber-500">
-                  <Star className="size-4.5 fill-amber-500" aria-hidden="true" />
+                  {/* text-* (not fill-*): the Star path is fill="currentColor",
+                      so only the CSS color property recolors it. */}
+                  <Star className="size-4.5 text-amber-500" aria-hidden="true" />
                   <span className="text-sm font-extrabold text-heading">
                     {currentRecipe.averageRating > 0
                       ? currentRecipe.averageRating.toFixed(1)
@@ -240,7 +281,7 @@ export function HeroCarousel({ recipes }: HeroCarouselProps) {
             </HeroFloat>
           )}
         </div>
-      </HeroFloat>
+      </div>
     </div>
   );
 }

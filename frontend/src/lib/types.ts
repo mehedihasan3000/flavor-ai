@@ -653,6 +653,8 @@ export interface AdminOverviewData {
   aiHealth: AdminOverviewAiHealth;
   topLists: AdminOverviewTopLists;
   feeds: AdminOverviewFeeds;
+}
+
 // ─── Pantry (Dev A) — Real Pantry Management (FEATURES_TASKS.md §2) ──────────
 // Dev A appends PantryItem / CreatePantryItemInput / PantrySearchQuery below.
 // Other workstreams do not edit.
